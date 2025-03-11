@@ -3,11 +3,11 @@ const { Sequelize } = require('sequelize');
 // Create a Sequelize instance for MariaDB connection
 const sequelize = new Sequelize({
   dialect: 'mariadb',
-  host: process.env.DB_HOST || 'localhost',
+  host: process.env.DB_HOST || 'localhost' || 'mariadb',
   port: process.env.DB_PORT || 3306,
   username: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'oa_pank',
+  password: process.env.DB_PASSWORD || 'rootpassword',
+  database: process.env.DB_NAME || 'oapank',
   logging: process.env.NODE_ENV === 'development' ? console.log : false,
   pool: {
     max: 5,
