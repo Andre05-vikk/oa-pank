@@ -30,9 +30,6 @@ coverage
 # nyc test coverage
 .nyc_output
 
-# Dependency directories
-.npm
-.eslintcache
 
 # Optional npm cache directory
 .npm
@@ -45,9 +42,6 @@ coverage
 
 # Yarn Integrity file
 .yarn-integrity
-
-# dotenv environment variable files
-.env
 
 # IDE files
 .idea/
@@ -63,6 +57,7 @@ Thumbs.db
 ehthumbs.db
 
 # Keys and certificates
+# Uncomment these lines in production
 /keys/*.pem
 /keys/*.key
 /keys/*.crt
@@ -74,3 +69,11 @@ ehthumbs.db
 # Temporary files
 .tmp
 .temp
+
+# Database files
+/data/*.sqlite
+/data/*.sqlite3
+/data/*.db
+*.sqlite
+*.sqlite3
+*.db
