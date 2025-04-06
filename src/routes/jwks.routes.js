@@ -2,12 +2,13 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 // JWKS endpoint for publishing public keys
 router.get('/jwks.json', (req, res) => {
   try {
     // Path to the public key file
-    const publicKeyPath = process.env.PUBLIC_KEY_PATH;
+      const publicKeyPath = path.join(__dirname, '../../keys/public.pem');
     
     // Check if the public key file exists
     if (!fs.existsSync(publicKeyPath)) {
@@ -19,18 +20,21 @@ router.get('/jwks.json', (req, res) => {
     
     // Read the public key
     const publicKey = fs.readFileSync(publicKeyPath, 'utf8');
-    
-    // Create a simple JWKS response
-    // In a production environment, this would include proper JWK formatting
+
+      // Parse the public key to extract components
+      const publicKeyObject = crypto.createPublicKey(publicKey);
+      const publicKeyJwk = publicKeyObject.export({format: 'jwk'});
+
+      // Create a proper JWKS response with correct JWK formatting
     const jwks = {
       keys: [
         {
-          kty: 'RSA',
+            kty: publicKeyJwk.kty,
           use: 'sig',
-          kid: process.env.BANK_PREFIX,
+            kid: process.env.BANK_PREFIX || 'default-bank',
           alg: 'RS256',
-          n: publicKey, // This is simplified; in production, this would be the modulus of the RSA key
-          e: 'AQAB' // Standard RSA exponent
+            n: publicKeyJwk.n,
+            e: publicKeyJwk.e
         }
       ]
     };

@@ -34,9 +34,6 @@ coverage
 .npm
 .eslintcache
 
-# Optional npm cache directory
-.npm
-
 # Optional REPL history
 .node_repl_history
 
@@ -45,9 +42,6 @@ coverage
 
 # Yarn Integrity file
 .yarn-integrity
-
-# dotenv environment variable files
-.env
 
 # IDE files
 .idea/
@@ -66,6 +60,9 @@ ehthumbs.db
 /keys/*.pem
 /keys/*.key
 /keys/*.crt
+*.private
+*.secret
+*.key.json
 
 # Build directories
 /dist
@@ -74,3 +71,20 @@ ehthumbs.db
 # Temporary files
 .tmp
 .temp
+
+# Docker related
+.docker-data/
+docker-volumes/
+
+# Generated API docs
+api-docs/
+
+# Database related
+*.sqlite
+*.db
+*.dump
+*.bak
+
+# Local development settings
+config.local.js
+settings.local.js
