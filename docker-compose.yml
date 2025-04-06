@@ -1,0 +1,32 @@
+services:
+  app:
+    platform: linux/arm64
+    build:
+      context: .
+      args:
+        - NODE_ENV=production
+    ports:
+      - "3001:3000"
+    # Floating ports allow running multiple instances on the same host
+    # Host ports (3000-3010) are mapped to container port 3000
+    volumes:
+      - ./keys:/usr/src/app/keys
+      - ./data:/usr/src/app/data
+      - sqlite_data:/usr/src/app/data
+    environment:
+      - NODE_ENV=production
+      - BANK_NAME=oa-pank
+      - PORT=3000
+      - JWT_SECRET=your-jwt-secret
+      - SESSION_SECRET=your-session-secret
+      - DB_PATH=/usr/src/app/data/database.sqlite
+    command: >
+      sh -c "mkdir -p /usr/src/app/data &&
+             mkdir -p /usr/src/app/keys &&
+             if [ ! -f /usr/src/app/keys/private.pem ]; then openssl genpkey -algorithm RSA -out /usr/src/app/keys/private.pem -pkeyopt rsa_keygen_bits:2048; fi &&
+             if [ ! -f /usr/src/app/keys/public.pem ]; then openssl rsa -pubout -in /usr/src/app/keys/private.pem -out /usr/src/app/keys/public.pem; fi &&
+             chown -R node:node /usr/src/app/data /usr/src/app/keys &&
+             npm start"
+
+volumes:
+  sqlite_data:
