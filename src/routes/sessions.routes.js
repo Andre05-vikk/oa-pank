@@ -47,9 +47,17 @@ router.post(
             // Validate request
             const errors = validationResult(req);
             if (!errors.isEmpty()) {
+                // Format validation errors for better readability
+                const formattedErrors = errors.array().map(error => ({
+                    field: error.param,
+                    message: error.msg,
+                    value: error.value
+                }));
+
                 return res.status(400).json({
                     success: false,
-                    errors: errors.array()
+                    message: 'Validation failed',
+                    errors: formattedErrors
                 });
             }
 
@@ -123,9 +131,30 @@ router.post(
             // Validate request
             const errors = validationResult(req);
             if (!errors.isEmpty()) {
+                // Format validation errors for better readability
+                const formattedErrors = errors.array().map(error => ({
+                    field: error.param,
+                    message: error.msg,
+                    value: error.value
+                }));
+
+                // Check for specific validation errors
+                const usernameError = formattedErrors.find(e => e.field === 'username');
+                const passwordError = formattedErrors.find(e => e.field === 'password');
+
+                let message = 'Validation failed';
+                if (usernameError && passwordError) {
+                    message = 'Username and password are required';
+                } else if (usernameError) {
+                    message = 'Username is required';
+                } else if (passwordError) {
+                    message = 'Password is required';
+                }
+
                 return res.status(400).json({
                     success: false,
-                    errors: errors.array()
+                    message: message,
+                    errors: formattedErrors
                 });
             }
 
@@ -134,7 +163,7 @@ router.post(
             if (!user) {
                 return res.status(401).json({
                     success: false,
-                    message: 'Invalid credentials'
+                    message: 'User not found'
                 });
             }
 
@@ -144,7 +173,7 @@ router.post(
             if (!isMatch) {
                 return res.status(401).json({
                     success: false,
-                    message: 'Invalid credentials'
+                    message: 'Incorrect password'
                 });
             }
 

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {body, validationResult} = require('express-validator');
 const bcrypt = require('bcryptjs');
-const {getById, update, getBy, getAll, insert, remove} = require('../config/database');
+const {getById, update, getBy, insert, remove} = require('../config/database');
 const {authenticate} = require('../middleware/auth.middleware');
 
 // Helper function to convert snake_case to camelCase
@@ -114,34 +114,6 @@ router.post(
     }
 );
 
-// READ - Get all users (admin only)
-router.get('/', authenticate, async (req, res) => {
-    try {
-        // Check if user is admin (in a real app, you would have roles)
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied: Admin role required'
-            });
-        }
-
-        const users = await getAll('users');
-        const formattedUsers = users.map(formatUserForResponse);
-
-        res.status(200).json({
-            success: true,
-            users: formattedUsers
-        });
-    } catch (error) {
-        console.error('Error fetching users:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch users',
-            error: error.message
-        });
-    }
-});
-
 // READ - Get current user (self)
 router.get('/me', authenticate, async (req, res) => {
     try {
@@ -163,13 +135,13 @@ router.get('/me', authenticate, async (req, res) => {
     }
 });
 
-// READ - Get user by ID (admin or self)
+// READ - Get user by ID (self only)
 router.get('/:id', authenticate, async (req, res) => {
     try {
         const userId = req.params.id;
 
-        // Check if user is requesting their own data or is admin
-        if (req.user.id !== userId && req.user.role !== 'admin') {
+        // Check if user is requesting their own data
+        if (req.user.id !== userId) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied: You can only view your own profile'
@@ -321,13 +293,13 @@ router.put(
   }
 );
 
-// DELETE - Delete user (self or admin)
+// DELETE - Delete user (self only)
 router.delete('/:id', authenticate, async (req, res) => {
     try {
         const userId = req.params.id;
 
-        // Check if user is deleting their own account or is admin
-        if (req.user.id !== userId && req.user.role !== 'admin') {
+        // Check if user is deleting their own account
+        if (req.user.id !== userId) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied: You can only delete your own account'

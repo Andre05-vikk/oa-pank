@@ -6,9 +6,8 @@ services:
       args:
         - NODE_ENV=production
     ports:
-      - "3001:3000"
-    # Floating ports allow running multiple instances on the same host
-    # Host ports (3000-3010) are mapped to container port 3000
+      - "3001:3001"
+    # Port 3001 is mapped to container port 3001
     volumes:
       - ./keys:/usr/src/app/keys
       - ./data:/usr/src/app/data
@@ -16,9 +15,9 @@ services:
     environment:
       - NODE_ENV=production
       - BANK_NAME=oa-pank
-      - PORT=3000
-      - JWT_SECRET=your-jwt-secret
-      - SESSION_SECRET=your-session-secret
+      - PORT=3001
+      - JWT_SECRET=OA-Pank-JWT-Secret-Key-2024
+      - SESSION_SECRET=OA-Pank-Session-Secret-Key-2024
       - DB_PATH=/usr/src/app/data/database.sqlite
     command: >
       sh -c "mkdir -p /usr/src/app/data &&

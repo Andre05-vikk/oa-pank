@@ -40,10 +40,10 @@ const convertCurrency = (amount, fromCurrency, toCurrency) => {
 
   // Convert source currency to EUR
   const amountInEur = amount / (CURRENCY_RATES[fromCurrency] / 100);
-  
+
   // Convert EUR to target currency
   const amountInTargetCurrency = Math.round(amountInEur * (CURRENCY_RATES[toCurrency] / 100));
-  
+
   return amountInTargetCurrency;
 };
 
@@ -63,32 +63,37 @@ const getCurrencyRates = () => {
 };
 
 /**
- * Updates currency rates from an external source
- * In a real application, this should be done regularly
+ * Updates currency rates from the central bank
+ * This is called automatically when the application starts
  */
 const updateCurrencyRates = async () => {
   try {
     const axios = require('axios');
-    const response = await axios.get('https://api.exchangerate-api.com/v4/latest/EUR');
-    const rates = response.data.rates;
-    
-    // Update rates
-    CURRENCY_RATES.USD = Math.round(rates.USD * 100) || CURRENCY_RATES.USD;
-    CURRENCY_RATES.GBP = Math.round(rates.GBP * 100) || CURRENCY_RATES.GBP;
-    CURRENCY_RATES.CHF = Math.round(rates.CHF * 100) || CURRENCY_RATES.CHF;
-    CURRENCY_RATES.JPY = Math.round(rates.JPY * 100) || CURRENCY_RATES.JPY;
-    CURRENCY_RATES.AUD = Math.round(rates.AUD * 100) || CURRENCY_RATES.AUD;
-    CURRENCY_RATES.CAD = Math.round(rates.CAD * 100) || CURRENCY_RATES.CAD;
-    CURRENCY_RATES.SEK = Math.round(rates.SEK * 100) || CURRENCY_RATES.SEK;
-    CURRENCY_RATES.NOK = Math.round(rates.NOK * 100) || CURRENCY_RATES.NOK;
-    CURRENCY_RATES.DKK = Math.round(rates.DKK * 100) || CURRENCY_RATES.DKK;
-    CURRENCY_RATES.PLN = Math.round(rates.PLN * 100) || CURRENCY_RATES.PLN;
-    CURRENCY_RATES.CZK = Math.round(rates.CZK * 100) || CURRENCY_RATES.CZK;
-    
-    console.log('Currency rates updated successfully');
-    return true;
+    // Use the central bank API to get currency rates
+    // In a real application, this would be the actual central bank API
+    // For this school project, we're using a mock or the teacher's API
+    const centralBankUrl = process.env.CENTRAL_BANK_URL || 'https://henno.cfd/keskpank';
+    const response = await axios.get(`${centralBankUrl}/currencies`);
+
+    if (response.data && response.data.rates) {
+      const rates = response.data.rates;
+
+      // Update rates for all supported currencies
+      Object.keys(CURRENCY_RATES).forEach(currency => {
+        if (rates[currency]) {
+          CURRENCY_RATES[currency] = Math.round(rates[currency] * 100) || CURRENCY_RATES[currency];
+        }
+      });
+
+      console.log('Currency rates updated successfully from central bank');
+      return true;
+    } else {
+      console.warn('Central bank did not provide valid currency rates, using default rates');
+      return false;
+    }
   } catch (error) {
-    console.error('Failed to update currency rates:', error);
+    console.error('Failed to update currency rates from central bank:', error.message);
+    console.warn('Using default currency rates');
     return false;
   }
 };

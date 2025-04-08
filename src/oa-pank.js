@@ -5,10 +5,11 @@ const swaggerUi = require('swagger-ui-express');
 const YAML = require('js-yaml');
 const fs = require('fs');
 const path = require('path');
-const axios = require('axios');
 const { registerWithCentralBank } = require('./config/central-banks.config');
 const { initializeDatabase } = require('./config/database');
-const { Account } = require('./models/account.model');
+
+// Import middleware
+const { authenticate } = require('./middleware/auth.middleware');
 
 // Import routes
 const sessionsRoutes = require('./routes/sessions.routes');
@@ -86,8 +87,7 @@ app.use(swaggerBasePath, express.static('node_modules/swagger-ui-dist'));
 // Import currency config
 const { getCurrencyRates, updateCurrencyRates } = require('./config/currency.config');
 
-// Import authentication middleware
-const { authenticate } = require('./middleware/auth.middleware');
+// Authentication middleware is already imported at the top
 
 // Currency endpoints - RESTful implementation
 // GET all currencies
@@ -139,30 +139,22 @@ app.get('/currencies/:code', async (req, res) => {
   }
 });
 
-// PUT update all currency rates (admin only)
-app.put('/admin/currencies', authenticate, async (req, res) => {
+// Update currency rates from central bank
+app.get('/currencies/update', authenticate, async (req, res) => {
   try {
-    // Check if the user is an administrator
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only administrators can update currency rates'
-      });
-    }
-
-    // Update all currency rates
     const updated = await updateCurrencyRates();
 
     if (updated) {
       res.json({
         success: true,
-        message: 'Currency rates updated successfully',
+        message: 'Currency rates updated successfully from central bank',
         ...getCurrencyRates()
       });
     } else {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to update currency rates'
+      res.status(200).json({
+        success: true,
+        message: 'Using default currency rates',
+        ...getCurrencyRates()
       });
     }
   } catch (error) {
@@ -175,52 +167,25 @@ app.put('/admin/currencies', authenticate, async (req, res) => {
   }
 });
 
-// DELETE account (admin only)
-app.delete('/admin/accounts/:id', authenticate, async (req, res) => {
-  try {
-    // Check if the user is an administrator
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only administrators can delete accounts'
-      });
-    }
-
-    const accountId = req.params.id;
-
-    // Get account from database
-    const account = await Account.findById(accountId);
-
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Account not found'
-      });
-    }
-
-    // Delete the account
-    await Account.findByIdAndDelete(accountId);
-
-    res.json({
-      success: true,
-      message: 'Account deleted successfully'
-    });
-  } catch (error) {
-    console.error('Error deleting account:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete account',
-      error: error.message
-    });
+// Update currency rates when the application starts
+updateCurrencyRates().then(success => {
+  if (success) {
+    console.log('Currency rates updated from central bank on startup');
+  } else {
+    console.log('Using default currency rates');
   }
 });
 
+// Account deletion is now handled in the account routes
+
 // Custom error types
 class ValidationError extends Error {
-  constructor(message) {
+  constructor(message, errors) {
     super(message);
     this.name = 'ValidationError';
-    this.statusCode = 400;
+    this.statusCode = 422; // Unprocessable Entity
+    this.errors = errors;
+    this.errorCode = 'validation_error';
   }
 }
 
@@ -228,7 +193,8 @@ class AuthenticationError extends Error {
   constructor(message) {
     super(message);
     this.name = 'AuthenticationError';
-    this.statusCode = 401;
+    this.statusCode = 401; // Unauthorized
+    this.errorCode = 'authentication_error';
   }
 }
 
@@ -236,7 +202,67 @@ class AuthorizationError extends Error {
   constructor(message) {
     super(message);
     this.name = 'AuthorizationError';
-    this.statusCode = 403;
+    this.statusCode = 403; // Forbidden
+    this.errorCode = 'authorization_error';
+  }
+}
+
+// Additional error types
+class DatabaseError extends Error {
+  constructor(message, query) {
+    super(message);
+    this.name = 'DatabaseError';
+    this.statusCode = 500;
+    this.query = query;
+    this.errorCode = 'database_error';
+  }
+}
+
+class NetworkError extends Error {
+  constructor(message, endpoint) {
+    super(message);
+    this.name = 'NetworkError';
+    this.statusCode = 502; // Bad Gateway
+    this.endpoint = endpoint;
+    this.errorCode = 'network_error';
+  }
+}
+
+class TimeoutError extends Error {
+  constructor(message, endpoint) {
+    super(message);
+    this.name = 'TimeoutError';
+    this.statusCode = 504; // Gateway Timeout
+    this.endpoint = endpoint;
+    this.errorCode = 'timeout_error';
+  }
+}
+
+class JwtError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'JwtError';
+    this.statusCode = 401; // Unauthorized
+    this.errorCode = 'jwt_error';
+  }
+}
+
+class ResourceNotFoundError extends Error {
+  constructor(message, resource) {
+    super(message);
+    this.name = 'ResourceNotFoundError';
+    this.statusCode = 404; // Not Found
+    this.resource = resource;
+    this.errorCode = 'resource_not_found';
+  }
+}
+
+class BusinessLogicError extends Error {
+  constructor(message, code = 'business_logic_error') {
+    super(message);
+    this.name = 'BusinessLogicError';
+    this.statusCode = 422; // Unprocessable Entity
+    this.errorCode = code;
   }
 }
 
@@ -299,7 +325,7 @@ const initializeApp = async () => {
 
       const HOST = '0.0.0.0';
 
-      const server = app.listen(PORT, HOST, () => {
+      app.listen(PORT, HOST, () => {
         console.log(`${process.env.BANK_NAME || 'OA-Pank'} server running on ${HOST}:${PORT}`);
         console.log('\nApplication is available at:');
 
@@ -335,23 +361,160 @@ const initializeApp = async () => {
   }
 };
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err);
+// Custom error classes are already defined above
 
-  if (err instanceof ValidationError ||
-      err instanceof AuthenticationError ||
-      err instanceof AuthorizationError) {
+// Error handling middleware
+app.use((err, req, res) => {
+  console.error('Error:', err);
+
+  // Log additional details for debugging
+  if (err.stack) {
+    console.error('Stack trace:', err.stack);
+  }
+
+  if (req.method && req.originalUrl) {
+    console.error(`Request: ${req.method} ${req.originalUrl}`);
+  }
+
+  // Handle custom error types
+  if (err instanceof ValidationError) {
     return res.status(err.statusCode).json({
       success: false,
-      message: err.message
+      message: err.message,
+      error: err.errorCode,
+      errors: err.errors
+    });
+  }
+
+  if (err instanceof AuthenticationError) {
+    return res.status(err.statusCode).json({
+      success: false,
+      message: err.message,
+      error: err.errorCode
+    });
+  }
+
+  if (err instanceof AuthorizationError) {
+    return res.status(err.statusCode).json({
+      success: false,
+      message: err.message,
+      error: err.errorCode
+    });
+  }
+
+  if (err instanceof DatabaseError) {
+    // Log database errors with more details but don't expose query to client
+    console.error('Database error:', err.message);
+    if (err.query) {
+      console.error('Query:', err.query);
+    }
+
+    return res.status(err.statusCode).json({
+      success: false,
+      message: 'Database operation failed',
+      error: err.errorCode
+    });
+  }
+
+  if (err instanceof NetworkError) {
+    console.error('Network error:', err.message);
+    if (err.endpoint) {
+      console.error('Endpoint:', err.endpoint);
+    }
+
+    return res.status(err.statusCode).json({
+      success: false,
+      message: 'Failed to communicate with external service',
+      error: err.errorCode
+    });
+  }
+
+  if (err instanceof TimeoutError) {
+    console.error('Timeout error:', err.message);
+    if (err.endpoint) {
+      console.error('Endpoint:', err.endpoint);
+    }
+
+    return res.status(err.statusCode).json({
+      success: false,
+      message: 'Request to external service timed out',
+      error: err.errorCode
+    });
+  }
+
+  if (err instanceof JwtError) {
+    return res.status(err.statusCode).json({
+      success: false,
+      message: err.message,
+      error: err.errorCode
+    });
+  }
+
+  if (err instanceof ResourceNotFoundError) {
+    return res.status(err.statusCode).json({
+      success: false,
+      message: err.message,
+      error: err.errorCode,
+      resource: err.resource
+    });
+  }
+
+  if (err instanceof BusinessLogicError) {
+    return res.status(err.statusCode).json({
+      success: false,
+      message: err.message,
+      error: err.errorCode
+    });
+  }
+
+  // Handle SQLite errors
+  if (err.code && err.code.startsWith('SQLITE_')) {
+    console.error('SQLite error:', err.code);
+    let statusCode = 500;
+    let message = 'Database operation failed';
+
+    // Map specific SQLite errors to appropriate HTTP status codes
+    if (err.code === 'SQLITE_CONSTRAINT') {
+      statusCode = 409; // Conflict
+      message = 'Database constraint violation';
+    } else if (err.code === 'SQLITE_NOTFOUND') {
+      statusCode = 404; // Not Found
+      message = 'Resource not found';
+    }
+
+    return res.status(statusCode).json({
+      success: false,
+      message: message,
+      error: 'database_error',
+      code: err.code
+    });
+  }
+
+  // Handle JWT errors
+  if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError' || err.name === 'NotBeforeError') {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid or expired token',
+      error: 'jwt_error',
+      details: err.message
+    });
+  }
+
+  // Handle network errors
+  if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
+    return res.status(502).json({
+      success: false,
+      message: 'Failed to communicate with external service',
+      error: 'network_error',
+      code: err.code
     });
   }
 
   // Default error
   res.status(500).json({
     success: false,
-    message: 'Internal server error'
+    message: 'Internal server error',
+    error: 'server_error'
   });
 });
 

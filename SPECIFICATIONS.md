@@ -11,7 +11,6 @@ This document outlines the specifications for the OA-Pank banking system, which 
 - Users can log out (session token is deleted from the server)
 - Users can only access their own data
 - Users can update their profile information
-- Admin users have additional privileges to manage the system
 
 ## Account Management
 - Each user can have multiple accounts in different currencies (EUR, USD, GBP, etc.)
@@ -81,6 +80,23 @@ This document outlines the specifications for the OA-Pank banking system, which 
 - Database queries are optimized with proper indexing
 - The system implements caching where appropriate
 - Long-running operations are executed asynchronously
+
+## Currency Rates
+- Exchange rates are available via the `/currencies` endpoint (RESTful API)
+- Individual currency rates can be accessed via `/currencies/{code}` (e.g., `/currencies/USD`)
+- Rates are stored in cents (100 = 1 EUR) for precise calculations
+- Currency rates are updated from the Central Bank via GET request to `/currencies/update`
+
+## Port Configuration
+- The server starts on port 3001
+- If port 3001 is already in use, the system will automatically try port 3002
+- The API documentation is available at `/docs` when the server is running
+
+## Interbank Transfers
+- To make transfers to other banks, enter the account number with the bank prefix in the `toAccount` field
+- For example, use "ABC12345678" for a transfer to a bank with prefix ABC
+- The system automatically detects external transfers based on the account prefix
+- External transfers are secured using JWT signatures
 
 ## Monitoring and Logging
 - All significant events are logged (login attempts, transactions, errors)

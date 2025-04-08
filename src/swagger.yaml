@@ -33,7 +33,75 @@ components:
           example: Error message
         error:
           type: string
-          example: Detailed error message
+          example: error_code
+        details:
+          type: string
+          example: Detailed error information
+
+    ValidationError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: Validation failed
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                example: username
+              message:
+                type: string
+                example: Username is required
+              value:
+                type: string
+                example: ""
+
+    AuthenticationError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: User not found
+        error:
+          type: string
+          example: user_not_found
+
+    InsufficientFundsError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: Insufficient funds
+        error:
+          type: string
+          example: insufficient_funds
+        available:
+          type: number
+          example: 100.50
+        availableCurrency:
+          type: string
+          example: EUR
+        required:
+          type: number
+          example: 200.00
+        requiredCurrency:
+          type: string
+          example: EUR
+        accountNumber:
+          type: string
+          example: OAP12345678
     User:
       type: object
       properties:
@@ -54,7 +122,7 @@ components:
           example: john.doe@example.com
         role:
           type: string
-          enum: [user, admin]
+          enum: [user]
           example: user
         isActive:
           type: boolean
@@ -267,33 +335,32 @@ components:
               e:
                 type: string
                 example: AQAB
-
-  CurrencyRates:
-    type: object
-    properties:
-      success:
-        type: boolean
-        example: true
-      base:
-        type: string
-        example: EUR
-      rates:
-        type: object
-        additionalProperties:
-          type: integer
-        example:
-          EUR: 100
-          USD: 109
-          GBP: 86
-          CHF: 105
-          JPY: 15850
-          AUD: 165
-          CAD: 147
-          SEK: 1127
-          NOK: 1150
-          DKK: 745
-          PLN: 431
-          CZK: 2530
+    CurrencyRates:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        base:
+          type: string
+          example: EUR
+        rates:
+          type: object
+          additionalProperties:
+            type: integer
+          example:
+            EUR: 100
+            USD: 109
+            GBP: 86
+            CHF: 105
+            JPY: 15850
+            AUD: 165
+            CAD: 147
+            SEK: 1127
+            NOK: 1150
+            DKK: 745
+            PLN: 431
+            CZK: 2530
       displayRates:
         type: object
         properties:
@@ -366,12 +433,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/ValidationError"
         "401":
           description: Unauthorized
           content:
             application/json:
-            schema:
+              schema:
                 $ref: "#/components/schemas/Error"
 
   /sessions/login:
@@ -395,17 +462,17 @@ paths:
               schema:
                 $ref: "#/components/schemas/LoginResponse"
         "400":
-          description: Bad request
+          description: Bad request - Missing or invalid fields
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/ValidationError"
         "401":
-          description: Unauthorized
+          description: Unauthorized - User not found or incorrect password
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/AuthenticationError"
 
   /sessions:
     delete:
@@ -522,7 +589,7 @@ paths:
       tags:
         - Users
       summary: Get user by ID
-      description: Returns a user by their ID (admin only)
+      description: Returns a user by their ID (self only)
       security:
         - bearerAuth: []
       parameters:
@@ -648,7 +715,7 @@ paths:
       tags:
         - Users
       summary: Delete user
-      description: Deletes a user account (can delete own account or admin can delete any account)
+      description: Deletes a user account (can only delete own account)
       security:
         - bearerAuth: [ ]
       parameters:
@@ -706,7 +773,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Forbidden - can only delete own account unless admin
+          description: Forbidden - can only delete own account
           content:
             application/json:
               schema:
@@ -928,38 +995,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /admin/currencies:
-    put:
+
+  /currencies/update:
+    get:
       tags:
-        - Admin
-      summary: Update all currency rates from external source
-      description: Admin only endpoint to update all currency rates from an external API
+        - Currency
+      summary: Update currency rates from central bank
+      description: Updates all currency rates from the central bank
       security:
-        - bearerAuth: [ ]
+        - bearerAuth: []
       responses:
         "200":
           description: Successful operation
           content:
             application/json:
               schema:
-                allOf:
-                  - type: object
-                    properties:
-                      success:
-                        type: boolean
-                        example: true
-                      message:
-                        type: string
-                        example: Currency rates updated successfully
-                  - $ref: "#/components/schemas/CurrencyRates"
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Currency rates updated successfully from central bank
+                  base:
+                    type: string
+                    example: EUR
+                  rates:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  displayRates:
+                    type: object
+                    additionalProperties:
+                      type: string
         "401":
           description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "403":
-          description: Forbidden - Admin access required
           content:
             application/json:
               schema:
@@ -1074,36 +1145,11 @@ paths:
                   transaction:
                     $ref: "#/components/schemas/Transaction"
         "400":
-
-  /admin/accounts/{id}:
-    delete:
-      tags:
-        - Admin
-      summary: Delete account (admin only)
-      description: Allows bank administrators to delete any account regardless of balance
-      security:
-        - bearerAuth: [ ]
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Account ID to delete
-      responses:
-        "200":
-          description: Account deleted successfully
+          description: Bad request - Missing or invalid fields
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: Account deleted successfully
+                $ref: "#/components/schemas/ValidationError"
         "401":
           description: Unauthorized
           content:
@@ -1111,20 +1157,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Forbidden - Admin access required
+          description: Forbidden - No permission to access the account
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          description: Account not found
+          description: Not found - Account not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "422":
+          description: Unprocessable Entity - Insufficient funds or other business logic error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsufficientFundsError"
         "500":
           description: Server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+

@@ -112,9 +112,33 @@ router.post(
             // Validate request
             const errors = validationResult(req);
             if (!errors.isEmpty()) {
+                // Format validation errors for better readability
+                const formattedErrors = errors.array().map(error => ({
+                    field: error.param,
+                    message: error.msg,
+                    value: error.value
+                }));
+
+                // Create a more specific error message
+                let message = 'Validation failed';
+                const fieldErrors = formattedErrors.map(e => e.field);
+
+                if (fieldErrors.includes('fromAccount') && fieldErrors.includes('toAccount')) {
+                    message = 'Source and destination accounts are required';
+                } else if (fieldErrors.includes('fromAccount')) {
+                    message = 'Source account is required';
+                } else if (fieldErrors.includes('toAccount')) {
+                    message = 'Destination account is required';
+                } else if (fieldErrors.includes('amount')) {
+                    message = 'Valid amount is required (must be greater than 0)';
+                } else if (fieldErrors.includes('currency')) {
+                    message = 'Valid currency is required';
+                }
+
                 return res.status(400).json({
                     success: false,
-                    errors: errors.array()
+                    message: message,
+                    errors: formattedErrors
                 });
             }
 
@@ -126,7 +150,8 @@ router.post(
             if (!sourceAccount) {
                 return res.status(404).json({
                     success: false,
-                    message: 'Source account not found'
+                    message: 'Source account not found',
+                    accountNumber: fromAccount
                 });
             }
 
@@ -144,7 +169,8 @@ router.post(
             if (sourceUserId !== requestUserId) {
                 return res.status(403).json({
                     success: false,
-                    message: 'You do not have permission to transfer from this account'
+                    message: 'You do not have permission to transfer from this account',
+                    accountNumber: fromAccount
                 });
             }
 
@@ -156,22 +182,26 @@ router.post(
                 } catch (error) {
                     return res.status(400).json({
                         success: false,
-                        message: error.message
+                        message: 'Currency conversion error: ' + error.message,
+                        fromCurrency: currency,
+                        toCurrency: sourceAccount.currency
                     });
                 }
             }
 
             // Check if source account has sufficient funds
             if (sourceAccount.balance < amountInAccountCurrency) {
-                return res.status(400).json({
+                return res.status(422).json({
                     success: false,
                     message: 'Insufficient funds',
+                    error: 'insufficient_funds',
                     available: sourceAccount.balance,
                     availableCurrency: sourceAccount.currency,
                     required: amountInAccountCurrency,
                     requiredCurrency: sourceAccount.currency,
                     originalAmount: amount,
-                    originalCurrency: currency
+                    originalCurrency: currency,
+                    accountNumber: fromAccount
                 });
             }
 
@@ -185,7 +215,9 @@ router.post(
                 if (!targetAccount) {
                     return res.status(404).json({
                         success: false,
-                        message: 'Target account not found'
+                        message: 'Target account not found',
+                        error: 'target_account_not_found',
+                        accountNumber: toAccount
                     });
                 }
 
@@ -201,7 +233,11 @@ router.post(
                     } catch (error) {
                         return res.status(400).json({
                             success: false,
-                            message: error.message
+                            message: 'Currency conversion error',
+                            error: 'currency_conversion_error',
+                            details: error.message,
+                            fromCurrency: fromCurrency,
+                            toCurrency: toCurrency
                         });
                     }
                 }
@@ -234,9 +270,12 @@ router.post(
                 const targetBank = await getBy('external_banks', 'prefix', targetBankPrefix);
 
                 if (!targetBank) {
-                    return res.status(400).json({
+                    return res.status(422).json({
                         success: false,
-                        message: `Unknown bank with prefix ${targetBankPrefix}`
+                        message: `Unknown bank with prefix ${targetBankPrefix}`,
+                        error: 'unknown_bank',
+                        bankPrefix: targetBankPrefix,
+                        accountNumber: toAccount
                     });
                 }
 
@@ -260,6 +299,9 @@ router.post(
                         reference: transactionReference,
                         status: 'pending'
                     };
+
+                    // Set a timeout for the transaction (e.g., 30 seconds)
+                    const transactionTimeout = 30000; // 30 seconds
 
                     // Insert the transaction into our database
                     const transaction = await db.run(`
@@ -286,8 +328,19 @@ router.post(
                         // In a real implementation, we would verify with the central bank first
                         // const verificationResult = await verifyTransaction(externalTransactionData);
 
-                        // Send the transaction to the target bank
-                        await sendTransactionToBank(externalTransactionData, targetBank.api_url);
+                        // Update transaction status to 'inProgress'
+                        await db.run('UPDATE transactions SET status = ? WHERE reference = ?', ['inProgress', transactionReference]);
+
+                        // Set a timeout for the transaction
+                        const transactionPromise = sendTransactionToBank(externalTransactionData, targetBank.api_url);
+
+                        // Create a timeout promise
+                        const timeoutPromise = new Promise((_, reject) => {
+                            setTimeout(() => reject(new Error('Transaction timed out')), transactionTimeout);
+                        });
+
+                        // Race the transaction promise against the timeout
+                        await Promise.race([transactionPromise, timeoutPromise]);
 
                         // Update the transaction status to 'completed'
                         await db.run('UPDATE transactions SET status = ? WHERE reference = ?', ['completed', transactionReference]);
@@ -318,11 +371,43 @@ router.post(
                             amountInAccountCurrency, fromAccount
                         );
 
-                        throw externalError;
+                        // Add more detailed error information to the transaction
+                        await db.run(
+                            'UPDATE transactions SET description = ? WHERE reference = ?',
+                            `${transactionData.description} (Failed: ${externalError.message})`,
+                            transactionReference
+                        );
+
+                        // Instead of throwing, we'll handle the error here
+                        console.error('External transaction failed:', externalError);
+                        // Continue to error handling below
+                        return res.status(externalError.statusCode || 500).json({
+                            success: false,
+                            message: `Failed to process external transaction: ${externalError.message}`,
+                            transactionReference
+                        });
                     }
                 } catch (error) {
-                    console.error('External transaction failed:', error);
-                    return res.status(500).json({
+                    console.error('Unexpected error during external transaction:', error);
+                    // Determine appropriate status code based on error
+                    let statusCode = 500;
+                    if (error.message.includes('Unknown bank') ||
+                        error.message.includes('Invalid account')) {
+                        statusCode = 400; // Bad request for client errors
+                    } else if (error.message.includes('Authentication') ||
+                              error.message.includes('Unauthorized')) {
+                        statusCode = 401; // Unauthorized for authentication errors
+                    } else if (error.message.includes('Permission') ||
+                              error.message.includes('Access denied')) {
+                        statusCode = 403; // Forbidden for authorization errors
+                    } else if (error.message.includes('Not found') ||
+                              error.message.includes('does not exist')) {
+                        statusCode = 404; // Not found
+                    } else if (error.message.includes('timed out')) {
+                        statusCode = 504; // Gateway timeout
+                    }
+
+                    return res.status(statusCode).json({
                         success: false,
                         message: 'Failed to process external transaction',
                         error: error.message
@@ -412,7 +497,7 @@ router.get('/:id', authenticate, async (req, res) => {
         const userInvolved = accountNumbers.includes(transaction.from_account) ||
             accountNumbers.includes(transaction.to_account);
 
-        if (!userInvolved && req.user.role !== 'admin') {
+        if (!userInvolved) {
             return res.status(403).json({
                 success: false,
                 message: 'You do not have permission to view this transaction'
@@ -469,7 +554,7 @@ router.put(
             const accounts = await getBy('accounts', 'user_id', userId, true);
             const accountNumbers = accounts.map(account => account.account_number);
 
-            if (!accountNumbers.includes(transaction.from_account) && req.user.role !== 'admin') {
+            if (!accountNumbers.includes(transaction.from_account)) {
                 return res.status(403).json({
                     success: false,
                     message: 'You do not have permission to update this transaction'
@@ -531,7 +616,7 @@ router.delete('/:id', authenticate, async (req, res) => {
         const accounts = await getBy('accounts', 'user_id', userId, true);
         const accountNumbers = accounts.map(account => account.account_number);
 
-        if (!accountNumbers.includes(transaction.from_account) && req.user.role !== 'admin') {
+        if (!accountNumbers.includes(transaction.from_account)) {
             return res.status(403).json({
                 success: false,
                 message: 'You do not have permission to cancel this transaction'
