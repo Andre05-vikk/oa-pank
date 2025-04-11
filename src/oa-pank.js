@@ -5,8 +5,10 @@ const swaggerUi = require('swagger-ui-express');
 const YAML = require('js-yaml');
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 const { registerWithCentralBank } = require('./config/central-banks.config');
-const { initializeDatabase } = require('./config/database');
+const { initializeDatabase, getBy, insert } = require('./config/database');
+const { Account } = require('./models/account.model');
 
 // Import middleware
 const { authenticate } = require('./middleware/auth.middleware');
@@ -22,7 +24,7 @@ const jwksRoutes = require('./routes/jwks.routes');
 // Create Express app
 const app = express();
 // Set base path for serving through Nginx with prefix
-app.use(function(req, res, next) {
+app.use(function (req, res, next) {
   if (!req.baseUrl && process.env.NODE_ENV === 'production') {
     app.locals.baseUrl = '/oa-pank';
   }
@@ -33,10 +35,10 @@ app.use(function(req, res, next) {
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production'
     ? [
-        'https://hack2you.eu',
-        process.env.PRODUCTION_DOMAIN,    // Allows setting domain from .env file
-        process.env.PRODUCTION_IP         // Allows setting IP from .env file
-      ].filter(Boolean)  // Removes empty values
+      'https://hack2you.eu',
+      process.env.PRODUCTION_DOMAIN,    // Allows setting domain from .env file
+      process.env.PRODUCTION_IP         // Allows setting IP from .env file
+    ].filter(Boolean)  // Removes empty values
     : true, // Allow all origins in development
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
@@ -66,117 +68,45 @@ const isProduction = process.env.NODE_ENV === 'production';
 const swaggerBasePath = isProduction ? '/oa-pank/docs' : '/docs';
 
 // Prepare Swagger document based on environment
-let swaggerDocToUse = swaggerDocument;
-if (!isProduction) {
-  // Remove /oa-pank prefix from paths in development
-  swaggerDocToUse = JSON.parse(JSON.stringify(swaggerDocument));
-  if (swaggerDocToUse.paths) {
-    const newPaths = {};
-    Object.keys(swaggerDocToUse.paths).forEach(path => {
-      const newPath = path.replace('/oa-pank', '');
-      newPaths[newPath] = swaggerDocToUse.paths[path];
+let swaggerDocToUse = JSON.parse(JSON.stringify(swaggerDocument));
+
+// Set the current server based on environment
+const port = process.env.PORT || 3000;
+const currentUrl = isProduction ? 'https://hack2you.eu/oa-pank' : `http://localhost:${port}`;
+
+// Update servers list to put the current environment first
+if (swaggerDocToUse.servers && swaggerDocToUse.servers.length > 0) {
+  // Find the matching server or create a new one
+  const currentServerIndex = swaggerDocToUse.servers.findIndex(server => server.url === currentUrl);
+
+  if (currentServerIndex >= 0) {
+    // If server exists, move it to the first position
+    const currentServer = swaggerDocToUse.servers.splice(currentServerIndex, 1)[0];
+    currentServer.description = isProduction ? 'Production server (current)' : `Development server (port ${port}) (current)`;
+    swaggerDocToUse.servers.unshift(currentServer);
+  } else {
+    // If server doesn't exist, add it as the first one
+    swaggerDocToUse.servers.unshift({
+      url: currentUrl,
+      description: isProduction ? 'Production server (current)' : `Development server (port ${port}) (current)`
     });
-    swaggerDocToUse.paths = newPaths;
   }
+}
+
+// Remove /oa-pank prefix from paths in development
+if (!isProduction && swaggerDocToUse.paths) {
+  const newPaths = {};
+  Object.keys(swaggerDocToUse.paths).forEach(path => {
+    const newPath = path.replace('/oa-pank', '');
+    newPaths[newPath] = swaggerDocToUse.paths[path];
+  });
+  swaggerDocToUse.paths = newPaths;
 }
 
 // Setup Swagger UI
 app.use(swaggerBasePath, swaggerUi.serve, swaggerUi.setup(swaggerDocToUse));
 app.use(swaggerBasePath, express.static('node_modules/swagger-ui-dist'));
 
-// Import currency config
-const { getCurrencyRates, updateCurrencyRates } = require('./config/currency.config');
-
-// Authentication middleware is already imported at the top
-
-// Currency endpoints - RESTful implementation
-// GET all currencies
-app.get('/currencies', async (req, res) => {
-  try {
-    // Use currency.config module to get currency rates
-    const currencyData = getCurrencyRates();
-
-    res.json({
-      success: true,
-      ...currencyData
-    });
-  } catch (error) {
-    console.error('Error fetching currency rates:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch currency rates',
-      error: error.message
-    });
-  }
-});
-
-// GET specific currency
-app.get('/currencies/:code', async (req, res) => {
-  try {
-    const { code } = req.params;
-    const { rates } = getCurrencyRates();
-
-    if (!rates[code]) {
-      return res.status(404).json({
-        success: false,
-        message: `Currency ${code} not found`
-      });
-    }
-
-    res.json({
-      success: true,
-      code,
-      rate: rates[code],
-      displayRate: code === 'EUR' ? 1 : (rates[code] / 100).toFixed(2)
-    });
-  } catch (error) {
-    console.error('Error fetching currency rate:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to fetch currency rate',
-      error: error.message
-    });
-  }
-});
-
-// Update currency rates from central bank
-app.get('/currencies/update', authenticate, async (req, res) => {
-  try {
-    const updated = await updateCurrencyRates();
-
-    if (updated) {
-      res.json({
-        success: true,
-        message: 'Currency rates updated successfully from central bank',
-        ...getCurrencyRates()
-      });
-    } else {
-      res.status(200).json({
-        success: true,
-        message: 'Using default currency rates',
-        ...getCurrencyRates()
-      });
-    }
-  } catch (error) {
-    console.error('Error updating currency rates:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update currency rates',
-      error: error.message
-    });
-  }
-});
-
-// Update currency rates when the application starts
-updateCurrencyRates().then(success => {
-  if (success) {
-    console.log('Currency rates updated from central bank on startup');
-  } else {
-    console.log('Using default currency rates');
-  }
-});
-
-// Account deletion is now handled in the account routes
 
 // Custom error types
 class ValidationError extends Error {
@@ -294,6 +224,10 @@ dirs.forEach(dir => {
   }
 });
 
+// Global variable to store bank prefix from central bank
+// Initialize with null - will be set properly after central bank registration
+global.BANK_PREFIX = null;
+
 // Initialize application
 const initializeApp = async () => {
   try {
@@ -303,10 +237,30 @@ const initializeApp = async () => {
 
     // Register with central bank in all environments
     try {
-      await registerWithCentralBank();
+      const centralBankData = await registerWithCentralBank();
       console.log('Successfully registered with Central Bank');
+
+      // Update global bank prefix if available from central bank
+      if (centralBankData && centralBankData.bankPrefix) {
+        global.BANK_PREFIX = centralBankData.bankPrefix;
+        console.log(`Using bank prefix from central bank: ${global.BANK_PREFIX}`);
+
+        // Store the bank prefix in a persistent location for future use
+        process.env.LAST_CENTRAL_BANK_PREFIX = global.BANK_PREFIX;
+      } else {
+        console.log(`Central bank did not provide a prefix. Using last known prefix if available.`);
+      }
     } catch (error) {
       console.error('Failed to register with Central Bank:', error.message);
+      // Use the last known prefix from central bank if available
+      if (process.env.LAST_CENTRAL_BANK_PREFIX) {
+        global.BANK_PREFIX = process.env.LAST_CENTRAL_BANK_PREFIX;
+        console.log(`Using last known central bank prefix: ${global.BANK_PREFIX}`);
+      } else {
+        // Only as a last resort, use environment variable or default
+        global.BANK_PREFIX = process.env.BANK_PREFIX || '313'; // Default to our known bank prefix from central bank
+        console.log(`No previous central bank prefix available. Using fallback: ${global.BANK_PREFIX}`);
+      }
       // In production, we might want to exit if we can't register
       if (process.env.NODE_ENV === 'production' && process.env.REQUIRE_CENTRAL_BANK === 'true') {
         console.error('Exiting application due to failure to register with Central Bank');
@@ -325,7 +279,7 @@ const initializeApp = async () => {
 
       const HOST = '0.0.0.0';
 
-      app.listen(PORT, HOST, () => {
+      const server = app.listen(PORT, HOST, () => {
         console.log(`${process.env.BANK_NAME || 'OA-Pank'} server running on ${HOST}:${PORT}`);
         console.log('\nApplication is available at:');
 
@@ -361,10 +315,9 @@ const initializeApp = async () => {
   }
 };
 
-// Custom error classes are already defined above
 
 // Error handling middleware
-app.use((err, req, res) => {
+app.use((err, req, res, next) => {
   console.error('Error:', err);
 
   // Log additional details for debugging

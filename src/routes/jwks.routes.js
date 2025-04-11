@@ -9,7 +9,7 @@ router.get('/jwks.json', (req, res) => {
   try {
     // Path to the public key file
       const publicKeyPath = path.join(__dirname, '../../keys/public.pem');
-    
+
     // Check if the public key file exists
     if (!fs.existsSync(publicKeyPath)) {
       return res.status(404).json({
@@ -17,7 +17,7 @@ router.get('/jwks.json', (req, res) => {
         message: 'Public key not found'
       });
     }
-    
+
     // Read the public key
     const publicKey = fs.readFileSync(publicKeyPath, 'utf8');
 
@@ -31,14 +31,14 @@ router.get('/jwks.json', (req, res) => {
         {
             kty: publicKeyJwk.kty,
           use: 'sig',
-            kid: process.env.BANK_PREFIX || 'default-bank',
+            kid: global.BANK_PREFIX || '313', // Use the bank prefix from central bank or default to '313'
           alg: 'RS256',
             n: publicKeyJwk.n,
             e: publicKeyJwk.e
         }
       ]
     };
-    
+
     res.status(200).json(jwks);
   } catch (error) {
     console.error('Error serving JWKS:', error);
