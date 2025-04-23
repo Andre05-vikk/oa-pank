@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { verifyIncomingTransaction } = require('../config/interbank.config');
-const { getBy, db } = require('../config/database');
+const { getBy, getDatabase } = require('../config/database');
 
 /**
  * Handle incoming transactions from other banks
@@ -10,17 +10,30 @@ const { getBy, db } = require('../config/database');
  */
 router.post('/', async (req, res) => {
   try {
-    // Extract the JWT-signed transaction and source bank information
-    const { transaction: signedTransaction } = req.body;
-    const sourceBankPrefix = req.headers['x-bank-origin'];
-    
+    // Check if the request contains a JWT token in the 'transaction' or 'jwt' field
+    // or if the request body itself is the transaction data
+    let signedTransaction = req.body.transaction || req.body.jwt;
+    let sourceBankPrefix = req.headers['x-bank-origin'];
+
+    // If there's no JWT token in transaction or jwt field, check if the body itself might be the transaction data
     if (!signedTransaction) {
-      return res.status(400).json({
-        success: false,
-        message: 'Missing required transaction data'
-      });
+      console.log('No JWT token found, checking if body contains direct transaction data');
+
+      // Check if the body has typical transaction fields
+      if (req.body.accountFrom || req.body.accountTo || req.body.amount) {
+        console.log('Request body appears to contain direct transaction data');
+
+        // For direct transaction data, we need to verify it differently
+        // We'll handle this as a special case
+        return handleDirectTransactionData(req, res);
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: 'Missing required transaction data'
+        });
+      }
     }
-    
+
     // If source bank prefix is not in header, try to extract it from JWT payload
     let actualSourceBankPrefix = sourceBankPrefix;
     if (!actualSourceBankPrefix) {
@@ -42,7 +55,7 @@ router.post('/', async (req, res) => {
         });
       }
     }
-    
+
     // Verify the incoming transaction with the source bank's public key from central bank
     let transaction;
     try {
@@ -55,36 +68,46 @@ router.post('/', async (req, res) => {
         error: verificationError.message
       });
     }
-    
+
     // Check if the destination account exists in our bank
-    const toAccount = transaction.toAccount;
+    const toAccount = transaction.accountTo;
     const destinationAccount = await getBy('accounts', 'account_number', toAccount);
-    
+
     if (!destinationAccount) {
       return res.status(404).json({
         success: false,
         message: 'Destination account not found'
       });
     }
-    
+
     // Process the incoming transaction
     // 1. Add the amount to the destination account
+    const db = getDatabase();
+    if (!db) {
+      console.error('ERROR: Database connection is not available');
+      return res.status(500).json({
+        success: false,
+        message: 'Database connection is not available',
+        error: 'database_connection_error'
+      });
+    }
+
     await db.run(
       'UPDATE accounts SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE account_number = ?',
       transaction.amount, toAccount
     );
-    
+
     // 2. Record the transaction in our database
     const transactionData = {
-      from_account: transaction.fromAccount,
+      from_account: transaction.accountFrom,
       to_account: toAccount,
       amount: transaction.amount,
       currency: transaction.currency || 'EUR',
-      description: `${transaction.description || 'External transaction'} (From ${transaction.sourceBankName || sourceBankPrefix})`,
+      description: `${transaction.explanation || 'External transaction'} (From ${transaction.sourceBankName || sourceBankPrefix})`,
       reference: transaction.reference,
       status: 'completed'
     };
-    
+
     // Insert the transaction into our database
     await db.run(`
       INSERT INTO transactions (from_account, to_account, amount, currency, description, reference, status)
@@ -98,7 +121,7 @@ router.post('/', async (req, res) => {
       transactionData.reference,
       transactionData.status
     ]);
-    
+
     // Return success response
     return res.status(200).json({
       success: true,
@@ -114,5 +137,102 @@ router.post('/', async (req, res) => {
     });
   }
 });
+
+/**
+ * Handle direct transaction data (not wrapped in JWT)
+ * This is used by banks that send transaction data directly in the request body
+ */
+async function handleDirectTransactionData(req, res) {
+  try {
+    console.log('Processing direct transaction data:', JSON.stringify(req.body, null, 2));
+
+    // Extract transaction data from request body
+    const {
+      fromAccount,
+      toAccount,
+      amount,
+      currency = 'EUR',
+      explanation = 'External transaction',
+      reference = `direct-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      sourceBank,
+      sourceBankName
+    } = req.body;
+
+    // Validate required fields
+    if (!fromAccount || !toAccount || !amount) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required transaction fields (fromAccount, toAccount, amount)'
+      });
+    }
+
+    // Check if the destination account exists in our bank
+    const destinationAccount = await getBy('accounts', 'account_number', toAccount);
+
+    if (!destinationAccount) {
+      return res.status(404).json({
+        success: false,
+        message: 'Destination account not found'
+      });
+    }
+
+    // Get database connection
+    const db = getDatabase();
+    if (!db) {
+      console.error('ERROR: Database connection is not available');
+      return res.status(500).json({
+        success: false,
+        message: 'Database connection is not available',
+        error: 'database_connection_error'
+      });
+    }
+
+    // Process the transaction
+    // 1. Add the amount to the destination account
+    await db.run(
+      'UPDATE accounts SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE account_number = ?',
+      parseFloat(amount), accountTo // Ensure amount is a number
+    );
+
+    // 2. Record the transaction in our database
+    const transactionData = {
+      from_account: accountFrom,
+      to_account: accountTo,
+      amount: parseFloat(amount), // Ensure amount is a number
+      currency: currency,
+      description: `${explanation} (From ${sourceBankName || sourceBank || 'External Bank'})`,
+      reference: reference,
+      status: 'completed'
+    };
+
+    // Insert the transaction into our database
+    await db.run(`
+      INSERT INTO transactions (from_account, to_account, amount, currency, description, reference, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      transactionData.from_account,
+      transactionData.to_account,
+      transactionData.amount,
+      transactionData.currency,
+      transactionData.description,
+      transactionData.reference,
+      transactionData.status
+    ]);
+
+    // Return success response
+    return res.status(200).json({
+      success: true,
+      message: 'Transaction processed successfully',
+      transactionReference: reference
+    });
+  } catch (error) {
+    console.error('Failed to process direct transaction data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to process direct transaction',
+      error: error.message
+    });
+  }
+}
 
 module.exports = router;

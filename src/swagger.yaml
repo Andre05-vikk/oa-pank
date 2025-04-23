@@ -5,12 +5,8 @@ info:
   description: API documentation for OA-Pank banking system
 
 servers:
-  - url: https://hack2you.eu/oa-pank
-    description: Production server
-  - url: http://localhost:3001
-    description: Development server (port 3001)
-  - url: http://localhost:3000
-    description: Development server (port 3000)
+  - url: /
+    description: Current server
 
 security: []
 
@@ -122,7 +118,7 @@ components:
           example: john.doe@example.com
         role:
           type: string
-          enum: [user]
+          enum: [user, admin]
           example: user
         isActive:
           type: boolean
@@ -203,7 +199,7 @@ components:
           example: 1000.00
         currency:
           type: string
-          enum: [ EUR, USD, GBP, CHF, JPY, AUD, CAD, SEK, NOK, DKK, PLN, CZK ]
+          enum: [EUR, USD, GBP, CHF, JPY, AUD, CAD, SEK, NOK, DKK, PLN, CZK]
           example: EUR
         isActive:
           type: boolean
@@ -226,7 +222,7 @@ components:
       properties:
         currency:
           type: string
-          enum: [ EUR, USD, GBP, CHF, JPY, AUD, CAD, SEK, NOK, DKK, PLN, CZK ]
+          enum: [EUR, USD, GBP, CHF, JPY, AUD, CAD, SEK, NOK, DKK, PLN, CZK]
           example: EUR
         type:
           type: string
@@ -241,19 +237,19 @@ components:
         transactionId:
           type: string
           example: OAP-1620000000000-12345
-        fromAccount:
+        accountFrom:
           type: string
-          example: OAP12345678
-        toAccount:
+          example: 31359474302
+        accountTo:
           type: string
-          example: OAP87654321
+          example: 31300000000
         amount:
           type: number
           format: float
           example: 100.00
         currency:
           type: string
-          enum: [ EUR, USD, GBP, CHF, JPY, AUD, CAD, SEK, NOK, DKK, PLN, CZK ]
+          enum: [EUR, USD, GBP, CHF, JPY, AUD, CAD, SEK, NOK, DKK, PLN, CZK]
           example: EUR
         status:
           type: string
@@ -290,17 +286,17 @@ components:
     TransactionInput:
       type: object
       required:
-        - fromAccount
-        - toAccount
+        - accountFrom
+        - accountTo
         - amount
         - currency
       properties:
-        fromAccount:
+        accountFrom:
           type: string
-          example: OAP12345678
-        toAccount:
+          example: 31359474302
+        accountTo:
           type: string
-          example: OAP87654321
+          example: 31300000000
         amount:
           type: number
           format: float
@@ -308,7 +304,7 @@ components:
           example: 100.00
         currency:
           type: string
-          enum: [ EUR, USD, GBP, CHF, JPY, AUD, CAD, SEK, NOK, DKK, PLN, CZK ]
+          enum: [EUR, USD, GBP, CHF, JPY, AUD, CAD, SEK, NOK, DKK, PLN, CZK]
           example: EUR
         description:
           type: string
@@ -335,71 +331,6 @@ components:
               e:
                 type: string
                 example: AQAB
-    CurrencyRates:
-      type: object
-      properties:
-        success:
-          type: boolean
-          example: true
-        base:
-          type: string
-          example: EUR
-        rates:
-          type: object
-          additionalProperties:
-            type: integer
-          example:
-            EUR: 100
-            USD: 109
-            GBP: 86
-            CHF: 105
-            JPY: 15850
-            AUD: 165
-            CAD: 147
-            SEK: 1127
-            NOK: 1150
-            DKK: 745
-            PLN: 431
-            CZK: 2530
-      displayRates:
-        type: object
-        properties:
-          EUR:
-            type: number
-            example: 1
-          USD:
-            type: string
-            example: "1.09"
-          GBP:
-            type: string
-            example: "0.86"
-          CHF:
-            type: string
-            example: "1.05"
-          JPY:
-            type: string
-            example: "158.50"
-          AUD:
-            type: string
-            example: "1.65"
-          CAD:
-            type: string
-            example: "1.47"
-          SEK:
-            type: string
-            example: "11.27"
-          NOK:
-            type: string
-            example: "11.47"
-          DKK:
-            type: string
-            example: "7.45"
-          PLN:
-            type: string
-            example: "4.31"
-          CZK:
-            type: string
-            example: "25.30"
 
 paths:
   /sessions/register:
@@ -510,7 +441,7 @@ paths:
       summary: Refresh session
       description: Extends the current session without requiring re-authentication
       security:
-        - bearerAuth: [ ]
+        - bearerAuth: []
       responses:
         "200":
           description: Session refreshed successfully
@@ -589,7 +520,7 @@ paths:
       tags:
         - Users
       summary: Get user by ID
-      description: Returns a user by their ID (self only)
+      description: Returns a user by their ID (admin only)
       security:
         - bearerAuth: []
       parameters:
@@ -612,31 +543,63 @@ paths:
                     example: true
                   user:
                     $ref: "#/components/schemas/User"
+              examples:
+                getUserSuccess:
+                  value:
+                    success: true
+                    user:
+                      _id: "60d21b4667d0d8992e610c85"
+                      username: "johndoe"
+                      firstName: "John"
+                      lastName: "Doe"
+                      email: "john.doe@example.com"
+                      role: "user"
+                      isActive: true
+                      createdAt: "2023-01-01T12:00:00Z"
+                      updatedAt: "2023-01-02T12:00:00Z"
         "401":
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                unauthorized:
+                  value:
+                    success: false
+                    message: "Authentication required"
+                    error: "unauthorized"
         "403":
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                forbidden:
+                  value:
+                    success: false
+                    message: "Access denied: Insufficient permissions"
+                    error: "forbidden"
         "404":
           description: User not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                notFound:
+                  value:
+                    success: false
+                    message: "User not found"
+                    error: "not_found"
     put:
       tags:
         - Users
       summary: Update user
       description: Updates a user's information (can only update own profile)
       security:
-        - bearerAuth: [ ]
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -665,6 +628,13 @@ paths:
                   type: string
                   description: New password (optional)
                   example: newpassword123
+            examples:
+              updateUser:
+                value:
+                  firstName: "John"
+                  lastName: "Smith"
+                  email: "john.smith@example.com"
+                  password: "newpassword123"
       responses:
         "200":
           description: User updated successfully
@@ -681,30 +651,69 @@ paths:
                     example: User updated successfully
                   user:
                     $ref: "#/components/schemas/User"
+              examples:
+                updateSuccess:
+                  value:
+                    success: true
+                    message: "User updated successfully"
+                    user:
+                      _id: "60d21b4667d0d8992e610c85"
+                      username: "johndoe"
+                      firstName: "John"
+                      lastName: "Smith"
+                      email: "john.smith@example.com"
+                      role: "user"
+                      isActive: true
+                      createdAt: "2023-01-01T12:00:00Z"
+                      updatedAt: "2023-01-03T12:00:00Z"
         "400":
           description: Bad request
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                badRequest:
+                  value:
+                    success: false
+                    message: "Invalid input data"
+                    error: "bad_request"
         "401":
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                unauthorized:
+                  value:
+                    success: false
+                    message: "Authentication required"
+                    error: "unauthorized"
         "403":
           description: Forbidden - can only update own profile
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                forbidden:
+                  value:
+                    success: false
+                    message: "Access denied: You can only update your own profile"
+                    error: "access_denied"
         "404":
           description: User not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                notFound:
+                  value:
+                    success: false
+                    message: "User not found"
+                    error: "not_found"
         "500":
           description: Server error
           content:
@@ -715,9 +724,9 @@ paths:
       tags:
         - Users
       summary: Delete user
-      description: Deletes a user account (can only delete own account)
+      description: Deletes a user account (can delete own account or admin can delete any account)
       security:
-        - bearerAuth: [ ]
+        - bearerAuth: []
       parameters:
         - name: id
           in: path
@@ -772,24 +781,48 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                unauthorized:
+                  value:
+                    success: false
+                    message: "Authentication required"
+                    error: "unauthorized"
         "403":
-          description: Forbidden - can only delete own account
+          description: Forbidden - can only delete own account unless admin
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                forbidden:
+                  value:
+                    success: false
+                    message: "Access denied: You can only delete your own account"
+                    error: "forbidden"
         "404":
           description: User not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                notFound:
+                  value:
+                    success: false
+                    message: "User not found"
+                    error: "not_found"
         "500":
           description: Server error
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+              examples:
+                serverError:
+                  value:
+                    success: false
+                    message: "Internal server error"
+                    error: "server_error"
 
   /accounts:
     get:
@@ -975,120 +1008,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /currencies:
-    get:
-      tags:
-        - Currency
-      summary: Get all currency rates
-      description: Returns the current exchange rates for all supported currencies
-      responses:
-        "200":
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CurrencyRates"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-
-  /currencies/update:
-    get:
-      tags:
-        - Currency
-      summary: Update currency rates from central bank
-      description: Updates all currency rates from the central bank
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  message:
-                    type: string
-                    example: Currency rates updated successfully from central bank
-                  base:
-                    type: string
-                    example: EUR
-                  rates:
-                    type: object
-                    additionalProperties:
-                      type: integer
-                  displayRates:
-                    type: object
-                    additionalProperties:
-                      type: string
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /currencies/{code}:
-    parameters:
-      - name: code
-        in: path
-        description: Currency code (e.g., EUR, USD)
-        required: true
-        schema:
-          type: string
-          enum: [ EUR, USD, GBP, CHF, JPY, AUD, CAD, SEK, NOK, DKK, PLN, CZK ]
-    get:
-      tags:
-        - Currency
-      summary: Get specific currency rate
-      description: Returns the exchange rate for a specific currency
-      responses:
-        "200":
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success:
-                    type: boolean
-                    example: true
-                  code:
-                    type: string
-                    example: USD
-                  rate:
-                    type: integer
-                    example: 109
-                  displayRate:
-                    type: string
-                    example: "1.09"
-        "404":
-          description: Currency not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
   /transactions:
     get:
       tags:
@@ -1180,4 +1099,3 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-

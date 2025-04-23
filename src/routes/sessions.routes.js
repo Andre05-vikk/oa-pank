@@ -18,20 +18,6 @@ const toCamelCase = (obj) => {
     return newObj;
 };
 
-// Helper function to convert camelCase to snake_case
-// Not currently used, but kept for future use
-/*
-const toSnakeCase = (obj) => {
-    if (!obj) return obj;
-    const newObj = {};
-    Object.keys(obj).forEach(key => {
-        const newKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        newObj[newKey] = obj[key];
-    });
-    return newObj;
-};
-*/
-
 // Register route
 router.post(
   '/register',

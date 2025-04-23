@@ -1,0 +1,74 @@
+[
+  {
+    "name": "barBank",
+    "transactionUrl": "https://henno.cfd/henno-pank/transactions/b2b",
+    "bankPrefix": "61c",
+    "owners": "barBank Inc.",
+    "jwksUrl": "https://henno.cfd/henno-pank/transactions/jwks",
+    "lastUpdated": "2025-04-08T20:23:39.095Z"
+  },
+  {
+    "name": "Eero Bank",
+    "transactionUrl": "https://bank.eerovallistu.site/transactions/b2b",
+    "bankPrefix": "be5",
+    "owners": "Eero Vallistu",
+    "jwksUrl": "https://bank.eerovallistu.site/jwks.json",
+    "lastUpdated": "2025-04-19T08:19:49.052Z"
+  },
+  {
+    "name": "EfeBank",
+    "transactionUrl": "https://bank.bee-srv.me/transactions/b2b",
+    "bankPrefix": "84f",
+    "owners": "Efe",
+    "jwksUrl": "https://bank.bee-srv.me/jwks.json",
+    "lastUpdated": "2025-04-23T08:45:07.275Z"
+  },
+  {
+    "name": "JoonasePank",
+    "transactionUrl": "https://joonasmagi.me/api/transactions/b2b",
+    "bankPrefix": "b7a",
+    "owners": "Joonas Mägi",
+    "jwksUrl": "https://joonasmagi.me/api/transactions/jwks",
+    "lastUpdated": "2025-04-08T20:23:39.095Z"
+  },
+  {
+    "name": "Nele Bank",
+    "transactionUrl": "https://nele.my/nele-bank/api/v1/transactions/b2b",
+    "bankPrefix": "300",
+    "owners": "Nele",
+    "jwksUrl": "https://nele.my/nele-bank/.well-known/jwks.json",
+    "lastUpdated": "2025-04-08T20:23:39.096Z"
+  },
+  {
+    "name": "NLine Pank",
+    "transactionUrl": "https://pank.digikaup.online/api/transactions/b2b",
+    "bankPrefix": "30b",
+    "owners": "NLine Group",
+    "jwksUrl": "https://pank.digikaup.online/.well-known/jwks.json",
+    "lastUpdated": "2025-04-23T08:45:07.275Z"
+  },
+  {
+    "name": "OA-Pank",
+    "transactionUrl": "https://hack2you.eu/oa-pank/transactions/b2b",
+    "bankPrefix": "940",
+    "owners": "Andre Park",
+    "jwksUrl": "https://hack2you.eu/oa-pank/.well-known/jwks.json",
+    "lastUpdated": "2025-04-19T08:19:49.052Z"
+  },
+  {
+    "name": "OA-Pank",
+    "transactionUrl": "https://hack2you.eu/oa-pank/docs/transactions/b2b",
+    "bankPrefix": "928",
+    "owners": "Andre Park",
+    "jwksUrl": "https://hack2you.eu/oa-pank/docs/.well-known/jwks.json",
+    "lastUpdated": "2025-04-19T08:19:49.052Z"
+  },
+  {
+    "name": "Ove Bank API",
+    "transactionUrl": "https://henno.cfd/ove-bank/api/transactions/external",
+    "bankPrefix": "fb4",
+    "owners": "Ove",
+    "jwksUrl": "https://henno.cfd/ove-bank/jwks.json",
+    "lastUpdated": "2025-04-08T20:23:39.096Z"
+  }
+]

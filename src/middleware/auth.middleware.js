@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const { getBy } = require('../config/database');
 const { isTokenBlacklisted } = require('../utils/token-blacklist');
+const { sendProblemResponse } = require('../utils/error-handler');
 
 /**
  * Authentication middleware to verify JWT tokens
@@ -11,45 +12,59 @@ const authenticate = async (req, res, next) => {
     // Get token from authorization header
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication required'
+      return sendProblemResponse(res, {
+        status: 401,
+        type: 'https://example.com/authentication-error',
+        title: 'Authentication Required',
+        detail: 'No valid authentication token provided',
+        instance: req.originalUrl
       });
     }
 
     const token = authHeader.split(' ')[1];
-    
+
     // Check if token is blacklisted (logged out)
     if (isTokenBlacklisted(token)) {
-      return res.status(401).json({
-        success: false,
-        message: 'Token has been invalidated. Please log in again.'
+      return sendProblemResponse(res, {
+        status: 401,
+        type: 'https://example.com/authentication-error',
+        title: 'Invalid Token',
+        detail: 'Token has been invalidated. Please log in again.',
+        instance: req.originalUrl
       });
     }
-    
+
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-    
+
     // Get user from database
     const user = await getBy('users', 'username', decoded.username);
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'User not found'
+      return sendProblemResponse(res, {
+        status: 401,
+        type: 'https://example.com/authentication-error',
+        title: 'User Not Found',
+        detail: 'The user associated with this token no longer exists',
+        instance: req.originalUrl
       });
     }
-    
+
     // Attach user and token to request object
     req.user = user;
     req.token = token;
-    
+
     next();
   } catch (error) {
     console.error('Authentication error:', error);
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid or expired token',
-      error: error.message
+    return sendProblemResponse(res, {
+      status: 401,
+      type: 'https://example.com/authentication-error',
+      title: 'Authentication Failed',
+      detail: error.message || 'Invalid or expired token',
+      instance: req.originalUrl,
+      extensions: {
+        errorCode: 'jwt_error'
+      }
     });
   }
 };

@@ -1,0 +1,9 @@
+{
+  "id": 254,
+  "name": "OA-Pank",
+  "transactionUrl": "https://hack2you.eu/oa-pank/docs/transactions/b2b",
+  "apiKey": "466667ad-c086-4938-8cd5-ee251102f1e9",
+  "bankPrefix": "313",
+  "owners": "Andre Park",
+  "jwksUrl": "https://hack2you.eu/oa-pank/docs/.well-known/jwks.json"
+}

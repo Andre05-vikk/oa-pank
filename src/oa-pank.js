@@ -5,13 +5,14 @@ const swaggerUi = require('swagger-ui-express');
 const YAML = require('js-yaml');
 const fs = require('fs');
 const path = require('path');
-const axios = require('axios');
-const { registerWithCentralBank } = require('./config/central-banks.config');
-const { initializeDatabase, getBy, insert } = require('./config/database');
-const { Account } = require('./models/account.model');
 
-// Import middleware
-const { authenticate } = require('./middleware/auth.middleware');
+const { registerWithCentralBank } = require('./config/central-banks.config');
+const { initializeDatabase } = require('./config/database');
+
+const { processTransactionQueue } = require('./services/transaction-processor');
+const { initializeBankSync } = require('./services/bank-sync');
+
+
 
 // Import routes
 const sessionsRoutes = require('./routes/sessions.routes');
@@ -24,7 +25,7 @@ const jwksRoutes = require('./routes/jwks.routes');
 // Create Express app
 const app = express();
 // Set base path for serving through Nginx with prefix
-app.use(function (req, res, next) {
+app.use(function (req, _, next) {
   if (!req.baseUrl && process.env.NODE_ENV === 'production') {
     app.locals.baseUrl = '/oa-pank';
   }
@@ -55,7 +56,7 @@ app.options('*', cors(corsOptions));
 app.use(express.json());
 
 // Root route handler
-app.get('/', (req, res) => {
+app.get('/', (_, res) => {
   // Redirect to Swagger docs based on environment
   res.redirect(swaggerBasePath);
 });
@@ -108,93 +109,7 @@ app.use(swaggerBasePath, swaggerUi.serve, swaggerUi.setup(swaggerDocToUse));
 app.use(swaggerBasePath, express.static('node_modules/swagger-ui-dist'));
 
 
-// Custom error types
-class ValidationError extends Error {
-  constructor(message, errors) {
-    super(message);
-    this.name = 'ValidationError';
-    this.statusCode = 422; // Unprocessable Entity
-    this.errors = errors;
-    this.errorCode = 'validation_error';
-  }
-}
 
-class AuthenticationError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'AuthenticationError';
-    this.statusCode = 401; // Unauthorized
-    this.errorCode = 'authentication_error';
-  }
-}
-
-class AuthorizationError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'AuthorizationError';
-    this.statusCode = 403; // Forbidden
-    this.errorCode = 'authorization_error';
-  }
-}
-
-// Additional error types
-class DatabaseError extends Error {
-  constructor(message, query) {
-    super(message);
-    this.name = 'DatabaseError';
-    this.statusCode = 500;
-    this.query = query;
-    this.errorCode = 'database_error';
-  }
-}
-
-class NetworkError extends Error {
-  constructor(message, endpoint) {
-    super(message);
-    this.name = 'NetworkError';
-    this.statusCode = 502; // Bad Gateway
-    this.endpoint = endpoint;
-    this.errorCode = 'network_error';
-  }
-}
-
-class TimeoutError extends Error {
-  constructor(message, endpoint) {
-    super(message);
-    this.name = 'TimeoutError';
-    this.statusCode = 504; // Gateway Timeout
-    this.endpoint = endpoint;
-    this.errorCode = 'timeout_error';
-  }
-}
-
-class JwtError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'JwtError';
-    this.statusCode = 401; // Unauthorized
-    this.errorCode = 'jwt_error';
-  }
-}
-
-class ResourceNotFoundError extends Error {
-  constructor(message, resource) {
-    super(message);
-    this.name = 'ResourceNotFoundError';
-    this.statusCode = 404; // Not Found
-    this.resource = resource;
-    this.errorCode = 'resource_not_found';
-  }
-}
-
-class BusinessLogicError extends Error {
-  constructor(message, code = 'business_logic_error') {
-    super(message);
-    this.name = 'BusinessLogicError';
-    this.statusCode = 422; // Unprocessable Entity
-    this.errorCode = code;
-  }
-}
 
 // Routes
 // Set route prefixes based on environment
@@ -206,7 +121,7 @@ app.use(`${routePrefix}/sessions`, sessionsRoutes);
 app.use(`${routePrefix}/users`, userRoutes);
 app.use(`${routePrefix}/accounts`, accountRoutes);
 app.use(`${routePrefix}/transactions`, transactionRoutes);
-app.use(`${routePrefix}/api/incoming-transactions`, incomingTransactionRoutes);
+app.use(`${routePrefix}/incoming-transactions`, incomingTransactionRoutes);
 
 // Add routes for b2b transactions that redirect to the incoming-transactions endpoint
 // These are needed for central bank registration
@@ -270,6 +185,16 @@ const initializeApp = async () => {
       }
     }
 
+    // Start transaction processor
+    // Process any pending transactions in the queue
+    processTransactionQueue();
+    console.log('Transaction processor started');
+
+    // Initialize bank synchronization
+    // This will update bank data from Central Bank every 24 hours
+    initializeBankSync();
+    console.log('Bank synchronization initialized');
+
     // Start server
     const startServer = (port) => {
       // Using ports in range 3001-3010
@@ -279,7 +204,7 @@ const initializeApp = async () => {
 
       const HOST = '0.0.0.0';
 
-      const server = app.listen(PORT, HOST, () => {
+      app.listen(PORT, HOST, () => {
         console.log(`${process.env.BANK_NAME || 'OA-Pank'} server running on ${HOST}:${PORT}`);
         console.log('\nApplication is available at:');
 
@@ -316,160 +241,22 @@ const initializeApp = async () => {
 };
 
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
+// Import error handler
+const { errorHandler, sendProblemResponse } = require('./utils/error-handler');
 
-  // Log additional details for debugging
-  if (err.stack) {
-    console.error('Stack trace:', err.stack);
-  }
-
-  if (req.method && req.originalUrl) {
-    console.error(`Request: ${req.method} ${req.originalUrl}`);
-  }
-
-  // Handle custom error types
-  if (err instanceof ValidationError) {
-    return res.status(err.statusCode).json({
-      success: false,
-      message: err.message,
-      error: err.errorCode,
-      errors: err.errors
-    });
-  }
-
-  if (err instanceof AuthenticationError) {
-    return res.status(err.statusCode).json({
-      success: false,
-      message: err.message,
-      error: err.errorCode
-    });
-  }
-
-  if (err instanceof AuthorizationError) {
-    return res.status(err.statusCode).json({
-      success: false,
-      message: err.message,
-      error: err.errorCode
-    });
-  }
-
-  if (err instanceof DatabaseError) {
-    // Log database errors with more details but don't expose query to client
-    console.error('Database error:', err.message);
-    if (err.query) {
-      console.error('Query:', err.query);
-    }
-
-    return res.status(err.statusCode).json({
-      success: false,
-      message: 'Database operation failed',
-      error: err.errorCode
-    });
-  }
-
-  if (err instanceof NetworkError) {
-    console.error('Network error:', err.message);
-    if (err.endpoint) {
-      console.error('Endpoint:', err.endpoint);
-    }
-
-    return res.status(err.statusCode).json({
-      success: false,
-      message: 'Failed to communicate with external service',
-      error: err.errorCode
-    });
-  }
-
-  if (err instanceof TimeoutError) {
-    console.error('Timeout error:', err.message);
-    if (err.endpoint) {
-      console.error('Endpoint:', err.endpoint);
-    }
-
-    return res.status(err.statusCode).json({
-      success: false,
-      message: 'Request to external service timed out',
-      error: err.errorCode
-    });
-  }
-
-  if (err instanceof JwtError) {
-    return res.status(err.statusCode).json({
-      success: false,
-      message: err.message,
-      error: err.errorCode
-    });
-  }
-
-  if (err instanceof ResourceNotFoundError) {
-    return res.status(err.statusCode).json({
-      success: false,
-      message: err.message,
-      error: err.errorCode,
-      resource: err.resource
-    });
-  }
-
-  if (err instanceof BusinessLogicError) {
-    return res.status(err.statusCode).json({
-      success: false,
-      message: err.message,
-      error: err.errorCode
-    });
-  }
-
-  // Handle SQLite errors
-  if (err.code && err.code.startsWith('SQLITE_')) {
-    console.error('SQLite error:', err.code);
-    let statusCode = 500;
-    let message = 'Database operation failed';
-
-    // Map specific SQLite errors to appropriate HTTP status codes
-    if (err.code === 'SQLITE_CONSTRAINT') {
-      statusCode = 409; // Conflict
-      message = 'Database constraint violation';
-    } else if (err.code === 'SQLITE_NOTFOUND') {
-      statusCode = 404; // Not Found
-      message = 'Resource not found';
-    }
-
-    return res.status(statusCode).json({
-      success: false,
-      message: message,
-      error: 'database_error',
-      code: err.code
-    });
-  }
-
-  // Handle JWT errors
-  if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError' || err.name === 'NotBeforeError') {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid or expired token',
-      error: 'jwt_error',
-      details: err.message
-    });
-  }
-
-  // Handle network errors
-  if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT') {
-    return res.status(502).json({
-      success: false,
-      message: 'Failed to communicate with external service',
-      error: 'network_error',
-      code: err.code
-    });
-  }
-
-  // Default error
-  res.status(500).json({
-    success: false,
-    message: 'Internal server error',
-    error: 'server_error'
+// Add 404 handler for routes that don't exist
+app.use((req, res) => {
+  sendProblemResponse(res, {
+    status: 404,
+    type: 'https://example.com/not-found',
+    title: 'Not Found',
+    detail: `Cannot ${req.method} ${req.path}`,
+    instance: req.originalUrl
   });
 });
+
+// Use RFC 7807/9457 compliant error handler
+app.use(errorHandler);
 
 // Initialize the application
 initializeApp();

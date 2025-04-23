@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const {body, validationResult} = require('express-validator');
+const { body, validationResult } = require('express-validator');
 const bcrypt = require('bcryptjs');
-const {getById, update, getBy, insert, remove} = require('../config/database');
-const {authenticate} = require('../middleware/auth.middleware');
+const { getById, update, getBy, getAll, insert, remove } = require('../config/database');
+const { authenticate } = require('../middleware/auth.middleware');
 
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
@@ -16,19 +16,7 @@ const toCamelCase = (obj) => {
     return newObj;
 };
 
-// Helper function to convert camelCase to snake_case
-// Not currently used, but kept for future use
-/*
-const toSnakeCase = (obj) => {
-    if (!obj) return obj;
-    const newObj = {};
-    Object.keys(obj).forEach(key => {
-        const newKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        newObj[newKey] = obj[key];
-    });
-    return newObj;
-};
-*/
+
 
 // Format user for API response
 const formatUserForResponse = (user) => {
@@ -54,7 +42,7 @@ router.post(
     '/',
     [
         body('username').notEmpty().withMessage('Username is required'),
-        body('password').isLength({min: 6}).withMessage('Password must be at least 6 characters'),
+        body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
         body('firstName').notEmpty().withMessage('First name is required'),
         body('lastName').notEmpty().withMessage('Last name is required'),
         body('email').isEmail().withMessage('Valid email is required'),
@@ -114,6 +102,8 @@ router.post(
     }
 );
 
+// Admin functionality has been removed
+
 // READ - Get current user (self)
 router.get('/me', authenticate, async (req, res) => {
     try {
@@ -135,10 +125,19 @@ router.get('/me', authenticate, async (req, res) => {
     }
 });
 
-// READ - Get user by ID (self only)
+// READ - Get user by ID (admin or self)
 router.get('/:id', authenticate, async (req, res) => {
     try {
         const userId = req.params.id;
+
+        // Validate user ID format first
+        if (!userId || userId.length < 1) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format',
+                error: 'invalid_id_format'
+            });
+        }
 
         // Check if user is requesting their own data
         if (req.user.id !== userId) {
@@ -176,11 +175,23 @@ router.get('/:id', authenticate, async (req, res) => {
 router.put(
     '/:id',
     authenticate,
-  [
-    body('firstName').optional().notEmpty().withMessage('First name cannot be empty'),
-    body('lastName').optional().notEmpty().withMessage('Last name cannot be empty'),
-    body('email').optional().isEmail().withMessage('Valid email is required'),
-  ],
+    [
+        // Validate ID parameter first
+        (req, res, next) => {
+            const userId = req.params.id;
+            if (!userId || userId.length < 1) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid user ID format',
+                    error: 'invalid_id_format'
+                });
+            }
+            next();
+        },
+        body('firstName').optional().notEmpty().withMessage('First name cannot be empty'),
+        body('lastName').optional().notEmpty().withMessage('Last name cannot be empty'),
+        body('email').optional().isEmail().withMessage('Valid email is required'),
+    ],
     async (req, res) => {
         try {
             const userId = req.params.id;
@@ -228,17 +239,17 @@ router.put(
                 error: error.message
             });
         }
-  }
+    }
 );
 
 // UPDATE - Change password (self)
 router.put(
     '/:id/password',
     authenticate,
-  [
-    body('currentPassword').notEmpty().withMessage('Current password is required'),
-    body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters'),
-  ],
+    [
+        body('currentPassword').notEmpty().withMessage('Current password is required'),
+        body('newPassword').isLength({ min: 6 }).withMessage('New password must be at least 6 characters'),
+    ],
     async (req, res) => {
         try {
             const userId = req.params.id;
@@ -276,7 +287,7 @@ router.put(
             const hashedPassword = await bcrypt.hash(req.body.newPassword, salt);
 
             // Update password in database
-            await update('users', userId, {password_hash: hashedPassword});
+            await update('users', userId, { password_hash: hashedPassword });
 
             res.status(200).json({
                 success: true,
@@ -290,16 +301,25 @@ router.put(
                 error: error.message
             });
         }
-  }
+    }
 );
 
-// DELETE - Delete user (self only)
+// DELETE - Delete user (self or admin)
 router.delete('/:id', authenticate, async (req, res) => {
     try {
         const userId = req.params.id;
 
+        // Validate user ID format first
+        if (!userId || userId.length < 1) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid user ID format',
+                error: 'invalid_id_format'
+            });
+        }
+
         // Check if user is deleting their own account
-        if (req.user.id !== userId) {
+        if (parseInt(req.user.id) !== parseInt(userId)) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied: You can only delete your own account'
@@ -316,10 +336,11 @@ router.delete('/:id', authenticate, async (req, res) => {
         }
 
         // Get all user accounts
-        const accounts = await getBy('accounts', 'user_id', userId, true);
+        const allAccounts = await getAll('accounts');
+        const accounts = allAccounts.filter(account => parseInt(account.userId) === parseInt(userId));
 
         // Check if any accounts have non-zero balance
-        const accountsWithBalance = accounts.filter(account => account.balance !== 0);
+        const accountsWithBalance = accounts.filter(account => parseFloat(account.balance) !== 0);
         if (accountsWithBalance.length > 0) {
             return res.status(400).json({
                 success: false,

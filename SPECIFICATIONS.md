@@ -24,12 +24,12 @@ This document outlines the specifications for the OA-Pank banking system, which 
 ## Transaction Processing
 - Users can initiate internal transactions between accounts within the same bank
 - Users can initiate external transactions to accounts at other banks
-- Transactions include necessary fields (fromAccount, toAccount, amount, currency, description, timestamp)
+- Transactions include necessary fields (accountFrom, accountTo, amount, currency, explanation, timestamp)
 - Transaction status is accurately tracked (pending, inProgress, completed, failed)
 - Users can view their transaction history with filtering options (date range, status, amount)
 - Transaction amounts must be positive and within allowed limits
-- Currency conversion is handled for transactions between accounts with different currencies
-- Failed transactions include detailed error messages
+- Transactions can only be made between accounts with the same currency
+- Failed transactions include detailed error messages following RFC 7807/9457 format
 - Transactions are atomic - either fully completed or fully rolled back
 
 ## Central Bank Integration
@@ -48,13 +48,12 @@ This document outlines the specifications for the OA-Pank banking system, which 
 - SwaggerUI is available at /docs, documenting all bank API endpoints
 - All API endpoints defined in the Swagger documentation are implemented and conform to the documentation
 - API endpoints return appropriate HTTP status codes
-- API endpoints handle errors robustly and provide descriptive error messages
+- API endpoints handle errors robustly and provide descriptive error messages using RFC 7807/9457 format
 - API endpoints require proper authentication when necessary
 - API documentation includes request/response examples
-- API versioning is implemented to ensure backward compatibility
-- Rate limiting is implemented to prevent abuse
 - API endpoints follow RESTful design principles
 - API responses are consistent in format and structure
+- Error responses are documented with appropriate examples and schemas
 
 ## Error Handling
 - The application recovers gracefully from external service failures (e.g., when the Central Bank is unresponsive)
@@ -64,39 +63,22 @@ This document outlines the specifications for the OA-Pank banking system, which 
 - The system implements circuit breakers for external service calls
 - Database transaction errors are properly handled and rolled back when necessary
 - Input validation errors return descriptive messages to help users correct their input
+- All error responses follow the RFC 7807/9457 Problem Details standard format
+- Error responses use the 'application/problem+json' content type
+- Error responses include type, title, status, detail, and instance fields
+- Error types are identified with URIs that describe the problem type
 
 ## Security
-- All communications use HTTPS/TLS
 - Passwords are hashed using bcrypt with appropriate salt rounds
 - JWT tokens have appropriate expiration times
-- The system implements protection against common attacks (SQL injection, XSS, CSRF)
-- Failed login attempts are rate-limited to prevent brute force attacks
-- Sensitive data is encrypted at rest
-- Access control is implemented at all levels (API, service, database)
+- The system implements protection against common attacks (SQL injection, XSS)
+- Input validation is performed on all user inputs
+- Access control ensures users can only access their own data
 
 ## Performance
-- The system can handle at least 100 concurrent users
-- API response times are under 500ms for 95% of requests
-- Database queries are optimized with proper indexing
-- The system implements caching where appropriate
-- Long-running operations are executed asynchronously
-
-## Currency Rates
-- Exchange rates are available via the `/currencies` endpoint (RESTful API)
-- Individual currency rates can be accessed via `/currencies/{code}` (e.g., `/currencies/USD`)
-- Rates are stored in cents (100 = 1 EUR) for precise calculations
-- Currency rates are updated from the Central Bank via GET request to `/currencies/update`
-
-## Port Configuration
-- The server starts on port 3001
-- If port 3001 is already in use, the system will automatically try port 3002
-- The API documentation is available at `/docs` when the server is running
-
-## Interbank Transfers
-- To make transfers to other banks, enter the account number with the bank prefix in the `toAccount` field
-- For example, use "ABC12345678" for a transfer to a bank with prefix ABC
-- The system automatically detects external transfers based on the account prefix
-- External transfers are secured using JWT signatures
+- Database queries use appropriate indexes for efficient data retrieval
+- Transactions are processed efficiently using SQLite's transaction support
+- The system is designed to handle multiple concurrent users
 
 ## Monitoring and Logging
 - All significant events are logged (login attempts, transactions, errors)

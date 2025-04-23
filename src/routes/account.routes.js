@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const {body, validationResult} = require('express-validator');
-const {getAll, getById, insert, getBy, update, remove} = require('../config/database');
+const { body, validationResult } = require('express-validator');
+const { getAll, getById, insert, getBy, update, remove } = require('../config/database');
 
 // Import authentication middleware
-const {authenticate} = require('../middleware/auth.middleware');
+const { authenticate } = require('../middleware/auth.middleware');
 
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
@@ -17,19 +17,6 @@ const toCamelCase = (obj) => {
     return newObj;
 };
 
-// Helper function to convert camelCase to snake_case
-// Not currently used, but kept for future use
-/*
-const toSnakeCase = (obj) => {
-    if (!obj) return obj;
-    const newObj = {};
-    Object.keys(obj).forEach(key => {
-        const newKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        newObj[newKey] = obj[key];
-    });
-    return newObj;
-};
-*/
 
 // Format account for API response
 const formatAccountForResponse = (account) => {
@@ -83,14 +70,14 @@ router.get('/', authenticate, async (req, res) => {
 
 // Create new account
 router.post(
-  '/',
+    '/',
     authenticate,
-  [
-      body('currency').isIn(['EUR', 'USD', 'GBP', 'CHF', 'JPY', 'AUD', 'CAD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK']).withMessage('Valid currency is required'),
-    body('type').isIn(['checking', 'savings', 'investment']).withMessage('Valid account type is required'),
-      body('accountNumber').optional().isString().withMessage('Account number must be a string'),
-      body('userId').optional().isString().withMessage('User ID must be a string'),
-  ],
+    [
+        body('currency').isIn(['EUR', 'USD', 'GBP', 'CHF', 'JPY', 'AUD', 'CAD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK']).withMessage('Valid currency is required'),
+        body('type').isIn(['checking', 'savings', 'investment']).withMessage('Valid account type is required'),
+        body('accountNumber').optional().isString().withMessage('Account number must be a string'),
+        body('userId').optional().isString().withMessage('User ID must be a string'),
+    ],
     async (req, res) => {
         try {
             // Validate request
@@ -102,8 +89,8 @@ router.post(
                 });
             }
 
-            // Get bank prefix from environment variables or use default
-            const bankPrefix = process.env.BANK_PREFIX || 'OAP';
+            // Get bank prefix from global variable set during central bank registration
+            const bankPrefix = global.BANK_PREFIX;
 
             // Generate account number if not provided
             const accountNumber = req.body.accountNumber || `${bankPrefix}${Math.floor(10000000 + Math.random() * 90000000)}`;
@@ -121,7 +108,7 @@ router.post(
             const accountData = {
                 user_id: req.user.id, // Get user ID from authenticated user
                 account_number: accountNumber,
-                balance: req.body.balance || 0,
+                balance: req.body.balance || 1000,
                 currency: req.body.currency || 'EUR',
                 is_active: true,
                 type: req.body.type || 'checking'
@@ -354,7 +341,7 @@ router.delete('/:id', authenticate, async (req, res) => {
                 success: false,
                 message: 'Account not found'
             });
-    }
+        }
 
         // Check if the account belongs to the authenticated user
         // getBy funktsioon teisendab user_id välja userId-ks

@@ -17,6 +17,26 @@ const getPrivateKey = () => {
 
 // Register bank with the central bank with retry logic
 const registerWithCentralBank = async (retryCount = 3, retryDelay = 1000) => {
+  // Check if central_bank_data.json file exists
+  const centralBankDataPath = path.join(__dirname, '../../data/central_bank_data.json');
+
+  if (fs.existsSync(centralBankDataPath)) {
+    try {
+      // Read existing central bank registration info
+      const centralBankData = JSON.parse(fs.readFileSync(centralBankDataPath, 'utf8'));
+
+      // Check if the file contains necessary information
+      if (centralBankData && centralBankData.id && centralBankData.bankPrefix) {
+        console.log('Using existing central bank registration data');
+        return centralBankData;
+      }
+    } catch (error) {
+      console.error('Error reading central bank data file:', error.message);
+      // Continue with registration if file reading fails
+    }
+  }
+
+  // If the file doesn't exist or doesn't contain necessary info, register again
   for (let attempt = 1; attempt <= retryCount; attempt++) {
     try {
       console.log(`Attempt ${attempt} to register with central bank`);
@@ -45,6 +65,15 @@ const registerWithCentralBank = async (retryCount = 3, retryDelay = 1000) => {
       });
 
       console.log('Successfully registered with central bank');
+
+      // Save central bank registration info as a file
+      try {
+        fs.writeFileSync(centralBankDataPath, JSON.stringify(response.data, null, 2));
+        console.log('Central bank registration data saved to file');
+      } catch (saveError) {
+        console.error('Error saving central bank data to file:', saveError.message);
+      }
+
       return response.data;
     } catch (error) {
       console.error(`Attempt ${attempt} to register with central bank failed:`, error.message);
@@ -118,9 +147,48 @@ const getBankPublicKey = async (bankPrefix, retryCount = 3, retryDelay = 1000) =
   }
 };
 
+/**
+ * Get all banks from the Central Bank
+ * @param {number} retryCount - Number of retry attempts
+ * @param {number} retryDelay - Delay between retries in milliseconds
+ * @returns {Promise<Array>} - List of all banks
+ */
+const getAllBanks = async (retryCount = 3, retryDelay = 1000) => {
+  for (let attempt = 1; attempt <= retryCount; attempt++) {
+    try {
+      console.log(`Attempt ${attempt} to get all banks from central bank`);
+      const response = await axios.get(`${CENTRAL_BANK_URL}/banks`, {
+        timeout: 10000 // 10 second timeout
+      });
+
+      if (response.data && Array.isArray(response.data)) {
+        console.log(`Successfully retrieved ${response.data.length} banks from central bank`);
+        return response.data;
+      } else {
+        console.error('Invalid response format from central bank');
+        throw new Error('Invalid response format from central bank');
+      }
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed to get all banks from central bank:`, error.message);
+
+      // If we've tried the maximum number of times, throw the error
+      if (attempt === retryCount) {
+        console.error(`All ${retryCount} attempts to get all banks from central bank failed.`);
+        throw error;
+      }
+
+      // Wait before the next retry
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      // Increase delay for next attempt (exponential backoff)
+      retryDelay *= 2;
+    }
+  }
+};
+
 module.exports = {
   registerWithCentralBank,
   verifyTransaction,
   getBankPublicKey,
+  getAllBanks,
   CENTRAL_BANK_URL
 };

@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const {body, validationResult} = require('express-validator');
-const {v4: uuidv4} = require('uuid');
-const {sendTransactionToBank} = require('../config/interbank.config');
-const {getAll, getById, createTransaction, processIncomingTransaction, getBy, db} = require('../config/database');
-const {convertCurrency} = require('../config/currency.config');
+const { body, validationResult } = require('express-validator');
+const { v4: uuidv4 } = require('uuid');
 
-// Helper function to convert snake_case to camelCase
+const { getAll, getById, createTransaction, processIncomingTransaction, getBy, getDatabase } = require('../config/database');
+const { queueTransaction } = require('../services/transaction-processor');
+
+// Convert snake_case to camelCase
 const toCamelCase = (obj) => {
     if (!obj) return obj;
     const newObj = {};
@@ -17,22 +17,8 @@ const toCamelCase = (obj) => {
     return newObj;
 };
 
-// Helper function to convert camelCase to snake_case
-// Not currently used, but kept for future use
-/*
-const toSnakeCase = (obj) => {
-    if (!obj) return obj;
-    const newObj = {};
-    Object.keys(obj).forEach(key => {
-        const newKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        newObj[newKey] = obj[key];
-    });
-    return newObj;
-};
-*/
-
 // Import authentication middleware
-const {authenticate} = require('../middleware/auth.middleware');
+const { authenticate } = require('../middleware/auth.middleware');
 
 // Format transaction for API response
 const formatTransactionForResponse = (transaction) => {
@@ -41,18 +27,18 @@ const formatTransactionForResponse = (transaction) => {
 
     return {
         _id: camelCaseTransaction.id.toString(),
-        transactionId: camelCaseTransaction.reference || `${process.env.BANK_PREFIX || 'OAP'}-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
-        fromAccount: camelCaseTransaction.fromAccount,
-        toAccount: camelCaseTransaction.toAccount,
+        transactionId: camelCaseTransaction.reference || `${global.BANK_PREFIX}-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+        accountFrom: camelCaseTransaction.fromAccount,
+        accountTo: camelCaseTransaction.toAccount,
         amount: parseFloat(camelCaseTransaction.amount || 0).toFixed(2),
         currency: camelCaseTransaction.currency,
         status: camelCaseTransaction.status || 'pending',
-        type: camelCaseTransaction.toAccount.startsWith(process.env.BANK_PREFIX || 'OAP') ? 'internal' : 'external',
-        description: camelCaseTransaction.description,
+        type: camelCaseTransaction.toAccount.startsWith(global.BANK_PREFIX) ? 'internal' : 'external',
+        explanation: camelCaseTransaction.description,
         errorMessage: camelCaseTransaction.errorMessage,
         initiatedBy: camelCaseTransaction.initiatedBy ? camelCaseTransaction.initiatedBy.toString() : null,
         signature: camelCaseTransaction.signature,
-        senderBank: camelCaseTransaction.senderBank || process.env.BANK_PREFIX || 'OAP',
+        senderBank: camelCaseTransaction.senderBank || global.BANK_PREFIX,
         receiverBank: camelCaseTransaction.receiverBank || camelCaseTransaction.toAccount.substring(0, 3),
         createdAt: camelCaseTransaction.createdAt || new Date().toISOString(),
         updatedAt: camelCaseTransaction.updatedAt || new Date().toISOString()
@@ -98,15 +84,15 @@ router.get('/', authenticate, async (req, res) => {
 
 // CREATE - Create new transaction
 router.post(
-  '/',
+    '/',
     authenticate,
-  [
-    body('fromAccount').notEmpty().withMessage('Source account is required'),
-    body('toAccount').notEmpty().withMessage('Destination account is required'),
-    body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
-      body('currency').isIn(['EUR', 'USD', 'GBP', 'CHF', 'JPY', 'AUD', 'CAD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK']).withMessage('Valid currency is required'),
-    body('description').optional().isString().withMessage('Description must be a string'),
-  ],
+    [
+        body('accountFrom').notEmpty().withMessage('Source account is required'),
+        body('accountTo').notEmpty().withMessage('Destination account is required'),
+        body('amount').isFloat({ min: 0.01 }).withMessage('Amount must be greater than 0'),
+        body('currency').isIn(['EUR', 'USD', 'GBP', 'CHF', 'JPY', 'AUD', 'CAD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK']).withMessage('Valid currency is required'),
+        body('explanation').optional().isString().withMessage('Explanation must be a string'),
+    ],
     async (req, res) => {
         try {
             // Validate request
@@ -123,11 +109,11 @@ router.post(
                 let message = 'Validation failed';
                 const fieldErrors = formattedErrors.map(e => e.field);
 
-                if (fieldErrors.includes('fromAccount') && fieldErrors.includes('toAccount')) {
+                if (fieldErrors.includes('accountFrom') && fieldErrors.includes('accountTo')) {
                     message = 'Source and destination accounts are required';
-                } else if (fieldErrors.includes('fromAccount')) {
+                } else if (fieldErrors.includes('accountFrom')) {
                     message = 'Source account is required';
-                } else if (fieldErrors.includes('toAccount')) {
+                } else if (fieldErrors.includes('accountTo')) {
                     message = 'Destination account is required';
                 } else if (fieldErrors.includes('amount')) {
                     message = 'Valid amount is required (must be greater than 0)';
@@ -135,90 +121,97 @@ router.post(
                     message = 'Valid currency is required';
                 }
 
-                return res.status(400).json({
-                    success: false,
-                    message: message,
-                    errors: formattedErrors
-                });
+                // Use RFC 7807 problem details format
+                return res.status(400)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/validation-error',
+                        title: message,
+                        status: 400,
+                        detail: 'The request contains validation errors that prevented processing',
+                        instance: req.originalUrl,
+                        errors: formattedErrors
+                    });
             }
 
-            const {fromAccount, toAccount, amount, currency, description} = req.body;
+            const { accountFrom, accountTo, amount, currency, explanation } = req.body;
+            const description = explanation; // For backward compatibility
             const reference = req.body.reference || uuidv4();
 
             // Check if source account exists and belongs to the authenticated user
-            const sourceAccount = await getBy('accounts', 'account_number', fromAccount);
+            const sourceAccount = await getBy('accounts', 'account_number', accountFrom);
             if (!sourceAccount) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Source account not found',
-                    accountNumber: fromAccount
-                });
+                return res.status(404)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/account-not-found',
+                        title: 'Source account not found',
+                        status: 404,
+                        detail: `The account ${accountFrom} could not be found`,
+                        instance: req.originalUrl,
+                        accountNumber: accountFrom
+                    });
             }
 
             // Verify account ownership
-            // getBy funktsioon teisendab user_id välja userId-ks
-            console.log('Source account userId:', sourceAccount.userId, 'Type:', typeof sourceAccount.userId);
-            console.log('Request user id:', req.user.id, 'Type:', typeof req.user.id);
-
             // Convert userId to number for proper comparison
             const sourceUserId = parseInt(sourceAccount.userId);
             const requestUserId = parseInt(req.user.id);
 
-            console.log('After parsing - Source userId:', sourceUserId, 'Request user id:', requestUserId);
-
             if (sourceUserId !== requestUserId) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'You do not have permission to transfer from this account',
-                    accountNumber: fromAccount
-                });
+                return res.status(403)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/permission-denied',
+                        title: 'Permission Denied',
+                        status: 403,
+                        detail: 'You do not have permission to transfer from this account',
+                        instance: req.originalUrl,
+                        accountNumber: accountFrom
+                    });
             }
 
-            // Konverteeri summa konto valuutasse, kui need on erinevad
+
             let amountInAccountCurrency = amount;
-            if (currency !== sourceAccount.currency) {
-                try {
-                    amountInAccountCurrency = convertCurrency(amount, currency, sourceAccount.currency);
-                } catch (error) {
-                    return res.status(400).json({
-                        success: false,
-                        message: 'Currency conversion error: ' + error.message,
-                        fromCurrency: currency,
-                        toCurrency: sourceAccount.currency
-                    });
-                }
-            }
 
             // Check if source account has sufficient funds
             if (sourceAccount.balance < amountInAccountCurrency) {
-                return res.status(422).json({
-                    success: false,
-                    message: 'Insufficient funds',
-                    error: 'insufficient_funds',
-                    available: sourceAccount.balance,
-                    availableCurrency: sourceAccount.currency,
-                    required: amountInAccountCurrency,
-                    requiredCurrency: sourceAccount.currency,
-                    originalAmount: amount,
-                    originalCurrency: currency,
-                    accountNumber: fromAccount
-                });
+                return res.status(422)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/insufficient-funds',
+                        title: 'Insufficient Funds',
+                        status: 422,
+                        detail: `Your current balance is ${sourceAccount.balance} ${sourceAccount.currency}, but the transaction requires ${amountInAccountCurrency} ${sourceAccount.currency}`,
+                        instance: req.originalUrl,
+                        available: sourceAccount.balance,
+                        availableCurrency: sourceAccount.currency,
+                        required: amountInAccountCurrency,
+                        requiredCurrency: sourceAccount.currency,
+                        originalAmount: amount,
+                        originalCurrency: currency,
+                        accountNumber: accountFrom
+                    });
             }
 
             // Determine if this is an internal or external transaction
-            const bankPrefix = process.env.BANK_PREFIX || 'OAP';
-            const isInternal = toAccount.startsWith(bankPrefix);
+            const bankPrefix = global.BANK_PREFIX;
+            const isInternal = accountTo.startsWith(bankPrefix);
 
             if (isInternal) {
                 // Check if target account exists and verify currency
-                const targetAccount = await getBy('accounts', 'account_number', toAccount);
+                const targetAccount = await getBy('accounts', 'account_number', accountTo);
                 if (!targetAccount) {
-                    return res.status(404).json({
-                        success: false,
-                        message: 'Target account not found',
-                        error: 'target_account_not_found',
-                        accountNumber: toAccount
-                    });
+                    return res.status(404)
+                        .contentType('application/problem+json')
+                        .json({
+                            type: 'https://example.com/account-not-found',
+                            title: 'Target Account Not Found',
+                            status: 404,
+                            detail: `The target account ${accountTo} could not be found`,
+                            instance: req.originalUrl,
+                            accountNumber: accountTo
+                        });
                 }
 
                 // Convert amount from source account currency to target account currency
@@ -226,28 +219,12 @@ router.post(
                 let fromCurrency = currency;
                 let toCurrency = targetAccount.currency;
 
-                // If currencies are different, convert the amount
-                if (fromCurrency !== toCurrency) {
-                    try {
-                        transactionAmount = convertCurrency(amount, fromCurrency, toCurrency);
-                    } catch (error) {
-                        return res.status(400).json({
-                            success: false,
-                            message: 'Currency conversion error',
-                            error: 'currency_conversion_error',
-                            details: error.message,
-                            fromCurrency: fromCurrency,
-                            toCurrency: toCurrency
-                        });
-                    }
-                }
-
                 // Internal transaction - process directly
                 const transaction = await createTransaction(
-                    fromAccount,
-                    toAccount,
+                    accountFrom,
+                    accountTo,
                     transactionAmount,
-                    `${description || ''} (Converted: ${amount} ${fromCurrency} → ${transactionAmount} ${toCurrency})`,
+                    `${explanation || ''} (Converted: ${amount} ${fromCurrency} → ${transactionAmount} ${toCurrency})`,
                     reference
                 );
 
@@ -262,37 +239,75 @@ router.post(
                     transaction: camelCaseTransaction
                 });
             } else {
-                // External transaction - need to determine the target bank
-                // Extract bank prefix from account number (e.g., 'KP' from 'KP12345678')
-                const targetBankPrefix = toAccount.substring(0, 2); // Assuming 2-letter prefix
+                // Extract bank prefix from account number
+                const targetBankPrefix = accountTo.substring(0, 3);
 
-                // Get the bank information from our database
+                // Find the target bank by prefix
                 const targetBank = await getBy('external_banks', 'prefix', targetBankPrefix);
 
+                console.log('Target bank found:', targetBank); // Debug log
+
                 if (!targetBank) {
-                    return res.status(422).json({
-                        success: false,
-                        message: `Unknown bank with prefix ${targetBankPrefix}`,
-                        error: 'unknown_bank',
-                        bankPrefix: targetBankPrefix,
-                        accountNumber: toAccount
-                    });
+                    return res.status(422)
+                        .contentType('application/problem+json')
+                        .json({
+                            type: 'https://example.com/unknown-bank',
+                            title: 'Unknown Bank',
+                            status: 422,
+                            detail: `The bank with prefix ${targetBankPrefix} is not recognized`,
+                            instance: req.originalUrl,
+                            bankPrefix: targetBankPrefix,
+                            accountNumber: accountTo
+                        });
+                }
+
+                // Check if the target bank has a valid transaction URL
+                if (!targetBank.transactionUrl) {
+                    console.error(`Bank ${targetBank.name} (${targetBankPrefix}) has no transaction URL defined`);
+                    return res.status(500)
+                        .contentType('application/problem+json')
+                        .json({
+                            type: 'https://example.com/missing-transaction-url',
+                            title: 'Missing Transaction URL',
+                            status: 500,
+                            detail: `Cannot process transaction: Bank ${targetBank.name} has no transaction URL defined`,
+                            instance: req.originalUrl,
+                            bankPrefix: targetBankPrefix,
+                            bankName: targetBank.name
+                        });
                 }
 
                 try {
                     // Generate a unique reference if not provided
                     const transactionReference = reference || uuidv4();
 
+                    // Get database connection
+                    const db = getDatabase();
+
+                    // Check if db is available
+                    if (!db) {
+                        console.error('ERROR: Database connection is not available');
+                        return res.status(500)
+                            .contentType('application/problem+json')
+                            .json({
+                                type: 'https://example.com/database-error',
+                                title: 'Database Error',
+                                status: 500,
+                                detail: 'Database connection is not available',
+                                instance: req.originalUrl
+                            });
+                    }
+
                     // Deduct the amount from the sender's account
                     await db.run(
                         'UPDATE accounts SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE account_number = ?',
-                        amountInAccountCurrency, fromAccount
+                        amountInAccountCurrency, accountFrom
                     );
 
                     // Create a transaction record with 'pending' status
                     const transactionData = {
-                        from_account: fromAccount,
-                        to_account: toAccount,
+                        from_account: accountFrom,
+                        to_account: accountTo,
                         amount,
                         currency,
                         description: description || 'External transaction',
@@ -300,127 +315,123 @@ router.post(
                         status: 'pending'
                     };
 
-                    // Set a timeout for the transaction (e.g., 30 seconds)
-                    const transactionTimeout = 30000; // 30 seconds
-
                     // Insert the transaction into our database
                     const transaction = await db.run(`
                         INSERT INTO transactions (from_account, to_account, amount, currency, description, reference,
                                                   status)
                         VALUES (?, ?, ?, ?, ?, ?, ?)
-                    `, [fromAccount, toAccount, amount, currency, transactionData.description, transactionReference, 'pending']);
+                    `, [accountFrom, accountTo, amount, currency, explanation, transactionReference, 'pending']);
 
-                    // Prepare the data packet for the target bank
+                    // Prepare the data packet for the target bank using the Central Bank specification format
                     const externalTransactionData = {
-                        fromAccount,
-                        toAccount,
+                        // Standard fields required by the Central Bank specification
+                        accountFrom: accountFrom,
+                        accountTo: accountTo,
                         amount,
                         currency,
-                        description: transactionData.description,
+                        explanation: explanation,
+                        senderName: process.env.BANK_NAME || 'OA-Pank',
+
+                        // Additional fields that might be useful
                         reference: transactionReference,
                         timestamp: new Date().toISOString(),
-                        sourceBank: process.env.BANK_PREFIX || 'OAP',
+                        sourceBank: global.BANK_PREFIX,
                         sourceBankName: process.env.BANK_NAME || 'OA-Pank'
                     };
 
-                    // Send the transaction to the target bank using JWT-signed data packet
+                    console.log('External transaction data:', JSON.stringify(externalTransactionData, null, 2));
+
+                    // Queue the transaction for asynchronous processing
                     try {
-                        // In a real implementation, we would verify with the central bank first
-                        // const verificationResult = await verifyTransaction(externalTransactionData);
+                        // Add transaction to the processing queue
+                        await queueTransaction(externalTransactionData, targetBank.transactionUrl, transactionReference);
 
-                        // Update transaction status to 'inProgress'
-                        await db.run('UPDATE transactions SET status = ? WHERE reference = ?', ['inProgress', transactionReference]);
-
-                        // Set a timeout for the transaction
-                        const transactionPromise = sendTransactionToBank(externalTransactionData, targetBank.api_url);
-
-                        // Create a timeout promise
-                        const timeoutPromise = new Promise((_, reject) => {
-                            setTimeout(() => reject(new Error('Transaction timed out')), transactionTimeout);
-                        });
-
-                        // Race the transaction promise against the timeout
-                        await Promise.race([transactionPromise, timeoutPromise]);
-
-                        // Update the transaction status to 'completed'
-                        await db.run('UPDATE transactions SET status = ? WHERE reference = ?', ['completed', transactionReference]);
-
-                        // Return successful transaction response
-                        return res.status(201).json({
+                        // Return immediate response with pending status
+                        return res.status(202).json({
                             success: true,
                             transaction: {
-                                fromAccount,
-                                toAccount,
+                                accountFrom: accountFrom,
+                                accountTo: accountTo,
                                 amount,
                                 currency,
-                                description: transactionData.description,
+                                explanation: explanation,
                                 reference: transactionReference,
-                                status: 'completed',
+                                status: 'pending',
                                 externalBankName: targetBank.name,
-                                message: `Transaction to ${targetBank.name} (${toAccount}) was successful`,
+                                message: `Transaction to ${targetBank.name} (${accountTo}) has been queued for processing`,
                                 _id: transaction.lastID || Date.now()
                             }
                         });
                     } catch (externalError) {
+                        // Get database connection for error handling
+                        const db = getDatabase();
+                        if (!db) {
+                            console.error('ERROR: Database connection is not available');
+                            throw new Error('Database connection is not available');
+                        }
+
                         // If the external transaction fails, update the status to 'failed'
-                        await db.run('UPDATE transactions SET status = ? WHERE reference = ?', ['failed', transactionReference]);
+                        await db.run('UPDATE transactions SET status = ?, error_message = ? WHERE reference = ?',
+                            ['failed', externalError.message, transactionReference]);
 
                         // Refund the amount to the sender's account
                         await db.run(
                             'UPDATE accounts SET balance = balance + ?, updated_at = CURRENT_TIMESTAMP WHERE account_number = ?',
-                            amountInAccountCurrency, fromAccount
+                            amountInAccountCurrency, accountFrom
                         );
 
                         // Add more detailed error information to the transaction
                         await db.run(
                             'UPDATE transactions SET description = ? WHERE reference = ?',
-                            `${transactionData.description} (Failed: ${externalError.message})`,
+                            `${explanation} (Failed: ${externalError.message})`,
                             transactionReference
                         );
 
-                        // Instead of throwing, we'll handle the error here
-                        console.error('External transaction failed:', externalError);
-                        // Continue to error handling below
-                        return res.status(externalError.statusCode || 500).json({
-                            success: false,
-                            message: `Failed to process external transaction: ${externalError.message}`,
-                            transactionReference
-                        });
+                        throw externalError;
                     }
                 } catch (error) {
-                    console.error('Unexpected error during external transaction:', error);
+                    console.error('External transaction failed:', error);
                     // Determine appropriate status code based on error
                     let statusCode = 500;
                     if (error.message.includes('Unknown bank') ||
                         error.message.includes('Invalid account')) {
                         statusCode = 400; // Bad request for client errors
                     } else if (error.message.includes('Authentication') ||
-                              error.message.includes('Unauthorized')) {
+                        error.message.includes('Unauthorized')) {
                         statusCode = 401; // Unauthorized for authentication errors
                     } else if (error.message.includes('Permission') ||
-                              error.message.includes('Access denied')) {
+                        error.message.includes('Access denied')) {
                         statusCode = 403; // Forbidden for authorization errors
                     } else if (error.message.includes('Not found') ||
-                              error.message.includes('does not exist')) {
+                        error.message.includes('does not exist')) {
                         statusCode = 404; // Not found
                     } else if (error.message.includes('timed out')) {
                         statusCode = 504; // Gateway timeout
                     }
 
-                    return res.status(statusCode).json({
-                        success: false,
-                        message: 'Failed to process external transaction',
-                        error: error.message
-                    });
+                    return res.status(statusCode)
+                        .contentType('application/problem+json')
+                        .json({
+                            type: 'https://example.com/external-transaction-error',
+                            title: 'External Transaction Failed',
+                            status: statusCode,
+                            detail: error.message || 'Failed to process external transaction',
+                            instance: req.originalUrl,
+                            transactionReference: transactionReference
+                        });
                 }
             }
         } catch (error) {
             console.error('Error creating transaction:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to create transaction',
-                error: error.message
-            });
+            res.status(500)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/transaction-error',
+                    title: 'Transaction Error',
+                    status: 500,
+                    detail: error.message || 'Failed to create transaction',
+                    instance: req.originalUrl
+                });
         }
     }
 );
@@ -428,23 +439,38 @@ router.post(
 // Endpoint to receive transactions from other banks
 router.post('/incoming', async (req, res) => {
     try {
-        const {fromAccount, toAccount, amount, description, reference} = req.body;
+        const { accountFrom, accountTo, amount, explanation, reference } = req.body;
+        const fromAccount = accountFrom;
+        const toAccount = accountTo;
+        const description = explanation;
 
         // Validate the incoming transaction
         if (!fromAccount || !toAccount || !amount) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid transaction data'
-            });
+            return res.status(400)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/invalid-transaction',
+                    title: 'Invalid Transaction Data',
+                    status: 400,
+                    detail: 'The transaction is missing required fields: source account, destination account, or amount',
+                    instance: req.originalUrl
+                });
         }
 
         // Check if the target account exists in our bank
-        const bankPrefix = process.env.BANK_PREFIX || 'OAP';
+        const bankPrefix = global.BANK_PREFIX;
         if (!toAccount.startsWith(bankPrefix)) {
-            return res.status(400).json({
-                success: false,
-                message: `Account ${toAccount} does not belong to this bank`
-            });
+            return res.status(400)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/invalid-destination',
+                    title: 'Invalid Destination Account',
+                    status: 400,
+                    detail: `Account ${toAccount} does not belong to this bank`,
+                    instance: req.originalUrl,
+                    accountNumber: toAccount,
+                    expectedPrefix: bankPrefix
+                });
         }
 
         // Process the incoming transaction
@@ -452,7 +478,7 @@ router.post('/incoming', async (req, res) => {
             fromAccount,
             toAccount,
             amount,
-            description,
+            description, // Kasutame selguse huvides seda, kuid see on tegelikult explanation
             reference
         );
 
@@ -469,24 +495,41 @@ router.post('/incoming', async (req, res) => {
         });
     } catch (error) {
         console.error('Error processing incoming transaction:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to process incoming transaction',
-            error: error.message
-        });
+        res.status(500)
+            .contentType('application/problem+json')
+            .json({
+                type: 'https://example.com/incoming-transaction-error',
+                title: 'Incoming Transaction Error',
+                status: 500,
+                detail: error.message || 'Failed to process incoming transaction',
+                instance: req.originalUrl
+            });
     }
 });
 
-// READ - Get transaction by ID
-router.get('/:id', authenticate, async (req, res) => {
+// GET - Check transaction status by reference
+router.get('/status/:reference', authenticate, async (req, res) => {
     try {
-        const transaction = await getById('transactions', req.params.id);
+        const reference = req.params.reference;
+
+        // Get transaction by reference
+        const db = getDatabase();
+        if (!db) {
+            throw new Error('Database connection is not available');
+        }
+
+        const transaction = await db.get('SELECT * FROM transactions WHERE reference = ?', [reference]);
 
         if (!transaction) {
-            return res.status(404).json({
-                success: false,
-                message: 'Transaction not found'
-            });
+            return res.status(404)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/transaction-not-found',
+                    title: 'Transaction Not Found',
+                    status: 404,
+                    detail: `Transaction with reference ${reference} could not be found`,
+                    instance: req.originalUrl
+                });
         }
 
         // Check if the transaction involves user's accounts
@@ -498,10 +541,89 @@ router.get('/:id', authenticate, async (req, res) => {
             accountNumbers.includes(transaction.to_account);
 
         if (!userInvolved) {
-            return res.status(403).json({
-                success: false,
-                message: 'You do not have permission to view this transaction'
+            return res.status(403)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/permission-denied',
+                    title: 'Permission Denied',
+                    status: 403,
+                    detail: 'You do not have permission to view this transaction',
+                    instance: req.originalUrl,
+                    transactionReference: reference
+                });
+        }
+
+        // Format transaction for API response
+        const formattedTransaction = formatTransactionForResponse(transaction);
+
+        // Add additional status information
+        let statusDetails = {
+            isPending: ['pending', 'inProgress', 'retrying'].includes(transaction.status),
+            isCompleted: transaction.status === 'completed',
+            isFailed: transaction.status === 'failed',
+            isCancelled: transaction.status === 'cancelled',
+            retryCount: transaction.retry_count || 0,
+            lastRetry: transaction.last_retry,
+            errorMessage: transaction.error_message
+        };
+
+        res.status(200).json({
+            success: true,
+            transaction: {
+                ...formattedTransaction,
+                statusDetails
+            }
+        });
+    } catch (error) {
+        console.error('Error checking transaction status:', error);
+        res.status(500)
+            .contentType('application/problem+json')
+            .json({
+                type: 'https://example.com/transaction-status-error',
+                title: 'Transaction Status Error',
+                status: 500,
+                detail: error.message || 'Failed to check transaction status',
+                instance: req.originalUrl
             });
+    }
+});
+
+// READ - Get transaction by ID
+router.get('/:id', authenticate, async (req, res) => {
+    try {
+        const transaction = await getById('transactions', req.params.id);
+
+        if (!transaction) {
+            return res.status(404)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/transaction-not-found',
+                    title: 'Transaction Not Found',
+                    status: 404,
+                    detail: `Transaction with ID ${req.params.id} could not be found`,
+                    instance: req.originalUrl
+                });
+        }
+
+        // Check if the transaction involves user's accounts
+        const userId = req.user.id;
+        const accounts = await getBy('accounts', 'user_id', userId, true);
+        const accountNumbers = accounts.map(account => account.account_number);
+
+        const userInvolved = accountNumbers.includes(transaction.from_account) ||
+            accountNumbers.includes(transaction.to_account);
+
+        if (!userInvolved) {
+            return res.status(403)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/permission-denied',
+                    title: 'Permission Denied',
+                    status: 403,
+                    detail: 'You do not have permission to view this transaction',
+                    instance: req.originalUrl,
+                    transactionId: req.params.id
+                });
         }
 
         // Format transaction for API response
@@ -513,11 +635,15 @@ router.get('/:id', authenticate, async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching transaction:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch transaction',
-            error: error.message
-        });
+        res.status(500)
+            .contentType('application/problem+json')
+            .json({
+                type: 'https://example.com/transaction-fetch-error',
+                title: 'Transaction Fetch Error',
+                status: 500,
+                detail: error.message || 'Failed to fetch transaction',
+                instance: req.originalUrl
+            });
     }
 });
 
@@ -609,7 +735,7 @@ router.delete('/:id', authenticate, async (req, res) => {
                 success: false,
                 message: 'Transaction not found'
             });
-    }
+        }
 
         // Check if the transaction is from user's account
         const userId = req.user.id;
