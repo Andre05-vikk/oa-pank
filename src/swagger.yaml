@@ -333,7 +333,7 @@ components:
                 example: AQAB
 
 paths:
-  /sessions/register:
+  /users:
     post:
       security: []
       tags:
@@ -372,7 +372,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /sessions/login:
+  /sessions:
     post:
       security: []
       tags:
@@ -405,12 +405,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthenticationError"
 
-  /sessions:
+  /sessions/current:
     delete:
       tags:
         - Authentication
       summary: Logout user
-      description: Invalidates the user's session (RESTful implementation)
+      description: Invalidates the user's current session
       security:
         - bearerAuth: []
       responses:
@@ -434,7 +434,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /sessions/refresh:
+  /sessions/current/refresh:
     post:
       tags:
         - Authentication
@@ -520,7 +520,7 @@ paths:
       tags:
         - Users
       summary: Get user by ID
-      description: Returns a user by their ID (admin only)
+      description: Returns a specific user's information
       security:
         - bearerAuth: []
       parameters:
@@ -543,61 +543,29 @@ paths:
                     example: true
                   user:
                     $ref: "#/components/schemas/User"
-              examples:
-                getUserSuccess:
-                  value:
-                    success: true
-                    user:
-                      _id: "60d21b4667d0d8992e610c85"
-                      username: "johndoe"
-                      firstName: "John"
-                      lastName: "Doe"
-                      email: "john.doe@example.com"
-                      role: "user"
-                      isActive: true
-                      createdAt: "2023-01-01T12:00:00Z"
-                      updatedAt: "2023-01-02T12:00:00Z"
         "401":
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-              examples:
-                unauthorized:
-                  value:
-                    success: false
-                    message: "Authentication required"
-                    error: "unauthorized"
         "403":
-          description: Forbidden
+          description: Forbidden - No permission to access this user
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-              examples:
-                forbidden:
-                  value:
-                    success: false
-                    message: "Access denied: Insufficient permissions"
-                    error: "forbidden"
         "404":
-          description: User not found
+          description: Not found - User not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-              examples:
-                notFound:
-                  value:
-                    success: false
-                    message: "User not found"
-                    error: "not_found"
     put:
       tags:
         - Users
       summary: Update user
-      description: Updates a user's information (can only update own profile)
+      description: Updates a user's information
       security:
         - bearerAuth: []
       parameters:
@@ -624,17 +592,6 @@ paths:
                   type: string
                   format: email
                   example: john.doe@example.com
-                password:
-                  type: string
-                  description: New password (optional)
-                  example: newpassword123
-            examples:
-              updateUser:
-                value:
-                  firstName: "John"
-                  lastName: "Smith"
-                  email: "john.smith@example.com"
-                  password: "newpassword123"
       responses:
         "200":
           description: User updated successfully
@@ -646,76 +603,28 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  message:
-                    type: string
-                    example: User updated successfully
                   user:
                     $ref: "#/components/schemas/User"
-              examples:
-                updateSuccess:
-                  value:
-                    success: true
-                    message: "User updated successfully"
-                    user:
-                      _id: "60d21b4667d0d8992e610c85"
-                      username: "johndoe"
-                      firstName: "John"
-                      lastName: "Smith"
-                      email: "john.smith@example.com"
-                      role: "user"
-                      isActive: true
-                      createdAt: "2023-01-01T12:00:00Z"
-                      updatedAt: "2023-01-03T12:00:00Z"
         "400":
-          description: Bad request
+          description: Bad request - Missing or invalid fields
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-              examples:
-                badRequest:
-                  value:
-                    success: false
-                    message: "Invalid input data"
-                    error: "bad_request"
+                $ref: "#/components/schemas/ValidationError"
         "401":
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-              examples:
-                unauthorized:
-                  value:
-                    success: false
-                    message: "Authentication required"
-                    error: "unauthorized"
         "403":
-          description: Forbidden - can only update own profile
+          description: Forbidden - No permission to update this user
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-              examples:
-                forbidden:
-                  value:
-                    success: false
-                    message: "Access denied: You can only update your own profile"
-                    error: "access_denied"
         "404":
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              examples:
-                notFound:
-                  value:
-                    success: false
-                    message: "User not found"
-                    error: "not_found"
-        "500":
-          description: Server error
+          description: Not found - User not found
           content:
             application/json:
               schema:
@@ -724,7 +633,7 @@ paths:
       tags:
         - Users
       summary: Delete user
-      description: Deletes a user account (can delete own account or admin can delete any account)
+      description: Deletes a user account
       security:
         - bearerAuth: []
       parameters:
@@ -748,8 +657,59 @@ paths:
                   message:
                     type: string
                     example: User deleted successfully
-        "400":
-          description: Bad request - Cannot delete user with non-zero balance accounts
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Forbidden - No permission to delete this user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found - User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /users/{id}/password:
+    put:
+      tags:
+        - Users
+      summary: Change password
+      description: Changes a user's password
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - currentPassword
+                - newPassword
+              properties:
+                currentPassword:
+                  type: string
+                  example: password123
+                newPassword:
+                  type: string
+                  example: newpassword123
+      responses:
+        "200":
+          description: Password changed successfully
           content:
             application/json:
               schema:
@@ -757,79 +717,41 @@ paths:
                 properties:
                   success:
                     type: boolean
-                    example: false
+                    example: true
                   message:
                     type: string
-                    example: Cannot delete user with accounts that have non-zero balance
-                  accounts:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        accountNumber:
-                          type: string
-                          example: OAP12345678
-                        balance:
-                          type: number
-                          example: 1000.00
-                        currency:
-                          type: string
-                          example: EUR
+                    example: Password changed successfully
+        "400":
+          description: Bad request - Missing or invalid fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationError"
         "401":
           description: Unauthorized
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-              examples:
-                unauthorized:
-                  value:
-                    success: false
-                    message: "Authentication required"
-                    error: "unauthorized"
         "403":
-          description: Forbidden - can only delete own account unless admin
+          description: Forbidden - No permission to change this user's password
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-              examples:
-                forbidden:
-                  value:
-                    success: false
-                    message: "Access denied: You can only delete your own account"
-                    error: "forbidden"
         "404":
-          description: User not found
+          description: Not found - User not found
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-              examples:
-                notFound:
-                  value:
-                    success: false
-                    message: "User not found"
-                    error: "not_found"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-              examples:
-                serverError:
-                  value:
-                    success: false
-                    message: "Internal server error"
-                    error: "server_error"
 
   /accounts:
     get:
       tags:
         - Accounts
-      summary: Get user accounts
-      description: Returns all accounts belonging to the authenticated user
+      summary: Get all accounts
+      description: Returns all accounts for the authenticated user
       security:
         - bearerAuth: []
       responses:
@@ -856,8 +778,8 @@ paths:
     post:
       tags:
         - Accounts
-      summary: Create new account
-      description: Creates a new bank account for the authenticated user
+      summary: Create account
+      description: Creates a new account for the authenticated user
       security:
         - bearerAuth: []
       requestBody:
@@ -880,11 +802,11 @@ paths:
                   account:
                     $ref: "#/components/schemas/Account"
         "400":
-          description: Bad request
+          description: Bad request - Missing or invalid fields
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/ValidationError"
         "401":
           description: Unauthorized
           content:
@@ -897,7 +819,7 @@ paths:
       tags:
         - Accounts
       summary: Get account by ID
-      description: Returns a specific account by its ID
+      description: Returns a specific account's information
       security:
         - bearerAuth: []
       parameters:
@@ -909,7 +831,7 @@ paths:
           description: Account ID
       responses:
         "200":
-          description: Account retrieved successfully
+          description: Account information retrieved successfully
           content:
             application/json:
               schema:
@@ -926,13 +848,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
-  /accounts/{id}/balance:
-    get:
+        "403":
+          description: Forbidden - No permission to access this account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Not found - Account not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
       tags:
         - Accounts
-      summary: Get account balance with transaction sectors
-      description: Returns the account balance with a breakdown of transaction sectors
+      summary: Delete account
+      description: Deletes an account
       security:
         - bearerAuth: []
       parameters:
@@ -944,7 +876,7 @@ paths:
           description: Account ID
       responses:
         "200":
-          description: Account balance retrieved successfully
+          description: Account deleted successfully
           content:
             application/json:
               schema:
@@ -953,42 +885,15 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  balance:
-                    type: object
-                    properties:
-                      amount:
-                        type: string
-                        example: "1000.00"
-                      currency:
-                        type: string
-                        example: "EUR"
-                      sectors:
-                        type: object
-                        properties:
-                          incoming:
-                            type: object
-                            properties:
-                              total:
-                                type: string
-                                example: "1500.00"
-                              count:
-                                type: integer
-                                example: 5
-                              percentage:
-                                type: integer
-                                example: 45
-                          outgoing:
-                            type: object
-                            properties:
-                              total:
-                                type: string
-                                example: "500.00"
-                              count:
-                                type: integer
-                                example: 6
-                              percentage:
-                                type: integer
-                                example: 55
+                  message:
+                    type: string
+                    example: Account deleted successfully
+        "400":
+          description: Bad request - Account has non-zero balance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "401":
           description: Unauthorized
           content:
@@ -996,13 +901,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Forbidden
+          description: Forbidden - No permission to delete this account
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "404":
-          description: Account not found
+          description: Not found - Account not found
           content:
             application/json:
               schema:
@@ -1012,10 +917,45 @@ paths:
     get:
       tags:
         - Transactions
-      summary: Get user transactions
-      description: Returns all transactions related to the authenticated user's accounts
+      summary: Get all transactions
+      description: Returns all transactions for the authenticated user
       security:
         - bearerAuth: []
+      parameters:
+        - name: accountId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by account ID
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, inProgress, completed, failed]
+          description: Filter by transaction status
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [internal, external]
+          description: Filter by transaction type
+        - name: startDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Filter by start date (YYYY-MM-DD)
+        - name: endDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          description: Filter by end date (YYYY-MM-DD)
       responses:
         "200":
           description: Transactions retrieved successfully
@@ -1040,8 +980,8 @@ paths:
     post:
       tags:
         - Transactions
-      summary: Create new transaction
-      description: Initiates a new transaction from one account to another
+      summary: Create transaction
+      description: Creates a new transaction
       security:
         - bearerAuth: []
       requestBody:

@@ -3,7 +3,7 @@ const router = express.Router();
 const {body, validationResult} = require('express-validator');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const {getBy, insert} = require('../config/database');
+const {getBy} = require('../config/database');
 const {authenticate} = require('../middleware/auth.middleware');
 const {blacklistToken} = require('../utils/token-blacklist');
 
@@ -18,96 +18,9 @@ const toCamelCase = (obj) => {
     return newObj;
 };
 
-// Register route
+// Login route - POST /sessions
 router.post(
-  '/register',
-  [
-    body('username').notEmpty().withMessage('Username is required'),
-    body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-    body('firstName').notEmpty().withMessage('First name is required'),
-    body('lastName').notEmpty().withMessage('Last name is required'),
-    body('email').isEmail().withMessage('Valid email is required'),
-  ],
-    async (req, res) => {
-        try {
-            // Validate request
-            const errors = validationResult(req);
-            if (!errors.isEmpty()) {
-                // Format validation errors for better readability
-                const formattedErrors = errors.array().map(error => ({
-                    field: error.param,
-                    message: error.msg,
-                    value: error.value
-                }));
-
-                return res.status(400).json({
-                    success: false,
-                    message: 'Validation failed',
-                    errors: formattedErrors
-                });
-            }
-
-            // Check if username already exists
-            const existingUser = await getBy('users', 'username', req.body.username);
-            if (existingUser) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Username already exists'
-                });
-            }
-
-            // Hash password
-            const salt = await bcrypt.genSalt(10);
-            const hashedPassword = await bcrypt.hash(req.body.password, salt);
-
-            // Prepare user data
-            const userData = {
-                username: req.body.username,
-                password_hash: hashedPassword,
-                first_name: req.body.firstName,
-                last_name: req.body.lastName,
-                email: req.body.email,
-                role: req.body.role || 'user', // Default to 'user' if not specified
-            };
-
-            // Insert user into database
-            const user = await insert('users', userData);
-
-            // Convert snake_case to camelCase for API response
-            const camelCaseUser = toCamelCase(user);
-
-            // Format the user object to match the documentation
-            const formattedUser = {
-                _id: camelCaseUser.id.toString(),
-                username: camelCaseUser.username,
-                firstName: camelCaseUser.firstName,
-                lastName: camelCaseUser.lastName,
-                email: camelCaseUser.email,
-                role: camelCaseUser.role || 'user',
-                isActive: true,
-                lastLogin: new Date().toISOString(),
-                createdAt: camelCaseUser.createdAt || new Date().toISOString(),
-                updatedAt: camelCaseUser.updatedAt || new Date().toISOString()
-            };
-
-            res.status(201).json({
-                success: true,
-                user: formattedUser
-            });
-        } catch (error) {
-            console.error('Error registering user:', error);
-            res.status(500).json({
-                success: false,
-                message: 'Failed to register user',
-                error: error.message
-            });
-        }
-  }
-);
-
-// Login route
-router.post(
-  '/login',
+  '/',
   [
     body('username').notEmpty().withMessage('Username is required'),
     body('password').notEmpty().withMessage('Password is required'),
@@ -203,8 +116,8 @@ router.post(
     }
 );
 
-// Logout route (DELETE method as per Swagger spec)
-router.delete('/', authenticate, async (req, res) => {
+// Logout route - DELETE /sessions/current
+router.delete('/current', authenticate, async (req, res) => {
     try {
         // Blacklist the current token
         blacklistToken(req.token);
@@ -223,8 +136,8 @@ router.delete('/', authenticate, async (req, res) => {
     }
 });
 
-// Refresh token route
-router.post('/refresh', authenticate, async (req, res) => {
+// Refresh token route - POST /sessions/current/refresh
+router.post('/current/refresh', authenticate, async (req, res) => {
     try {
         // Get user from database to ensure they still exist and are active
         const user = await getBy('users', 'username', req.user.username);
