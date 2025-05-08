@@ -30,6 +30,7 @@ const fetchBanksFromCentralBank = async () => {
 
 /**
  * Compare Central Bank data with local data to find changes
+ * First checks by bank name to avoid duplicates, then compares other data
  * @param {Array} centralBankData - Banks data from Central Bank
  * @param {Array} localData - Local banks data
  * @returns {Object} - Changes to be applied
@@ -45,27 +46,42 @@ const compareBanksData = (centralBankData, localData) => {
   // Create maps for easier lookup
   const centralBankMap = new Map();
   const localDataMap = new Map();
+  const localBanksByName = new Map();
 
-  // Map Central Bank data by bankPrefix
+  // Map Central Bank data by name (primary key)
   centralBankData.forEach(bank => {
-    if (bank.bankPrefix) {
-      centralBankMap.set(bank.bankPrefix, bank);
+    if (bank.name) {
+      // If we already have a bank with this name, keep only the most recent one
+      const existingBank = centralBankMap.get(bank.name);
+      if (!existingBank || (bank.lastUpdated && existingBank.lastUpdated && new Date(bank.lastUpdated) > new Date(existingBank.lastUpdated))) {
+        centralBankMap.set(bank.name, bank);
+      }
     }
   });
 
-  // Map local data by bankPrefix
+  // Map local data by name
   localData.forEach(bank => {
-    if (bank.bankPrefix) {
-      localDataMap.set(bank.bankPrefix, bank);
+    if (bank.name) {
+      // If we already have a bank with this name, keep only the most recent one
+      const existingBank = localBanksByName.get(bank.name);
+      if (!existingBank || (bank.lastUpdated && existingBank.lastUpdated && new Date(bank.lastUpdated) > new Date(existingBank.lastUpdated))) {
+        localBanksByName.set(bank.name, bank);
+      }
+
+      // Also keep a map by bankPrefix for backward compatibility
+      if (bank.bankPrefix) {
+        localDataMap.set(bank.bankPrefix, bank);
+      }
     }
   });
 
   // Find added and updated banks
-  centralBankMap.forEach((centralBank, prefix) => {
-    const localBank = localDataMap.get(prefix);
+  centralBankMap.forEach((centralBank, name) => {
+    const localBank = localBanksByName.get(name);
 
     if (!localBank) {
       // Bank is new
+      console.log(`Adding new bank: ${name}`);
       changes.added.push({
         ...centralBank,
         lastUpdated: new Date().toISOString()
@@ -73,25 +89,37 @@ const compareBanksData = (centralBankData, localData) => {
     } else {
       // Check if bank data has changed
       const hasChanged =
-        centralBank.name !== localBank.name ||
+        centralBank.bankPrefix !== localBank.bankPrefix ||
         centralBank.transactionUrl !== localBank.transactionUrl ||
         centralBank.jwksUrl !== localBank.jwksUrl ||
         centralBank.owners !== localBank.owners;
 
       if (hasChanged) {
-        changes.updated.push({
-          ...centralBank,
-          lastUpdated: new Date().toISOString()
-        });
+        // Check which version is newer based on lastUpdated
+        const centralBankDate = centralBank.lastUpdated ? new Date(centralBank.lastUpdated) : new Date(0);
+        const localBankDate = localBank.lastUpdated ? new Date(localBank.lastUpdated) : new Date(0);
+
+        if (centralBankDate > localBankDate) {
+          console.log(`Updating bank: ${name} (central bank data is newer)`);
+          changes.updated.push({
+            ...centralBank,
+            lastUpdated: new Date().toISOString()
+          });
+        } else {
+          console.log(`Keeping local data for bank: ${name} (local data is newer)`);
+          changes.unchanged.push(localBank);
+        }
       } else {
+        // No changes, keep local data
         changes.unchanged.push(localBank);
       }
     }
   });
 
-  // Find removed banks
-  localDataMap.forEach((localBank, prefix) => {
-    if (!centralBankMap.has(prefix)) {
+  // Find removed banks - a bank is considered removed if it's not in the central bank data by name
+  localBanksByName.forEach((localBank, name) => {
+    if (!centralBankMap.has(name)) {
+      console.log(`Removing bank: ${name}`);
       changes.removed.push(localBank);
     }
   });
@@ -101,17 +129,42 @@ const compareBanksData = (centralBankData, localData) => {
 
 /**
  * Update the other_banks_data.json file with new data
+ * Ensures there are no duplicates by bank name
  * @param {Array} updatedData - Updated banks data
  * @returns {Promise<boolean>} - Success status
  */
 const updateBanksDataFile = async (updatedData) => {
   try {
+    // Remove duplicates by bank name, keeping the most recent entry
+    const banksByName = new Map();
+
+    updatedData.forEach(bank => {
+      if (!bank.name) return; // Skip banks without a name
+
+      const existingBank = banksByName.get(bank.name);
+      if (!existingBank) {
+        // No existing bank with this name, add it
+        banksByName.set(bank.name, bank);
+      } else {
+        // Bank with this name already exists, keep the one with the most recent lastUpdated
+        const existingDate = existingBank.lastUpdated ? new Date(existingBank.lastUpdated) : new Date(0);
+        const newDate = bank.lastUpdated ? new Date(bank.lastUpdated) : new Date(0);
+
+        if (newDate > existingDate) {
+          banksByName.set(bank.name, bank);
+        }
+      }
+    });
+
+    // Convert map back to array
+    const dedupedData = Array.from(banksByName.values());
+
     // Sort banks by name for consistency
-    const sortedData = updatedData.sort((a, b) => a.name.localeCompare(b.name));
+    const sortedData = dedupedData.sort((a, b) => a.name.localeCompare(b.name));
 
     // Write to file
     fs.writeFileSync(otherBanksDataPath, JSON.stringify(sortedData, null, 2));
-    console.log(`Updated other_banks_data.json with ${updatedData.length} banks`);
+    console.log(`Updated other_banks_data.json with ${sortedData.length} banks (removed ${updatedData.length - sortedData.length} duplicates)`);
     return true;
   } catch (error) {
     console.error('Error updating other_banks_data.json:', error.message);
@@ -142,6 +195,7 @@ const updateLastUpdateFile = async (count) => {
 
 /**
  * Update the database with new banks data
+ * Ensures there are no duplicates by bank name
  * @param {Array} banksData - Updated banks data
  * @returns {Promise<boolean>} - Success status
  */
@@ -152,6 +206,30 @@ const updateDatabaseWithBanksData = async (banksData) => {
       throw new Error('Database connection is not available');
     }
 
+    // Remove duplicates by bank name, keeping the most recent entry
+    const banksByName = new Map();
+
+    banksData.forEach(bank => {
+      if (!bank.name) return; // Skip banks without a name
+
+      const existingBank = banksByName.get(bank.name);
+      if (!existingBank) {
+        // No existing bank with this name, add it
+        banksByName.set(bank.name, bank);
+      } else {
+        // Bank with this name already exists, keep the one with the most recent lastUpdated
+        const existingDate = existingBank.lastUpdated ? new Date(existingBank.lastUpdated) : new Date(0);
+        const newDate = bank.lastUpdated ? new Date(bank.lastUpdated) : new Date(0);
+
+        if (newDate > existingDate) {
+          banksByName.set(bank.name, bank);
+        }
+      }
+    });
+
+    // Convert map back to array
+    const dedupedData = Array.from(banksByName.values());
+
     // Start a transaction
     await db.run('BEGIN TRANSACTION');
 
@@ -160,7 +238,7 @@ const updateDatabaseWithBanksData = async (banksData) => {
       await db.run('DELETE FROM external_banks');
 
       // Insert new data
-      for (const bank of banksData) {
+      for (const bank of dedupedData) {
         await db.run(
           'INSERT INTO external_banks (name, prefix, transactionUrl) VALUES (?, ?, ?)',
           bank.name,
@@ -171,7 +249,7 @@ const updateDatabaseWithBanksData = async (banksData) => {
 
       // Commit the transaction
       await db.run('COMMIT');
-      console.log(`Updated database with ${banksData.length} banks`);
+      console.log(`Updated database with ${dedupedData.length} banks`);
       return true;
     } catch (error) {
       // Rollback in case of error
@@ -270,12 +348,79 @@ const updateBanksFromCentralBank = async () => {
 };
 
 /**
+ * Clean existing bank data to remove duplicates
+ * @returns {Promise<boolean>} - Success status
+ */
+const cleanExistingBankData = async () => {
+  try {
+    console.log('Cleaning existing bank data to remove duplicates...');
+
+    // Check if other_banks_data.json exists
+    if (!fs.existsSync(otherBanksDataPath)) {
+      console.log('No existing bank data file found, nothing to clean');
+      return true;
+    }
+
+    // Read existing data
+    const existingData = JSON.parse(fs.readFileSync(otherBanksDataPath, 'utf8'));
+    console.log(`Read ${existingData.length} banks from existing data`);
+
+    // Remove duplicates by bank name, keeping the most recent entry
+    const banksByName = new Map();
+
+    existingData.forEach(bank => {
+      if (!bank.name) return; // Skip banks without a name
+
+      const existingBank = banksByName.get(bank.name);
+      if (!existingBank) {
+        // No existing bank with this name, add it
+        banksByName.set(bank.name, bank);
+      } else {
+        // Bank with this name already exists, keep the one with the most recent lastUpdated
+        const existingDate = existingBank.lastUpdated ? new Date(existingBank.lastUpdated) : new Date(0);
+        const newDate = bank.lastUpdated ? new Date(bank.lastUpdated) : new Date(0);
+
+        if (newDate > existingDate) {
+          console.log(`Replacing existing bank ${bank.name} with newer data`);
+          banksByName.set(bank.name, bank);
+        }
+      }
+    });
+
+    // Convert map back to array
+    const dedupedData = Array.from(banksByName.values());
+
+    // Sort banks by name for consistency
+    const sortedData = dedupedData.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Write to file
+    fs.writeFileSync(otherBanksDataPath, JSON.stringify(sortedData, null, 2));
+    console.log(`Cleaned bank data file: ${existingData.length} banks -> ${sortedData.length} banks (removed ${existingData.length - sortedData.length} duplicates)`);
+
+    return true;
+  } catch (error) {
+    console.error('Error cleaning existing bank data:', error.message);
+    return false;
+  }
+};
+
+/**
  * Initialize bank synchronization
  * Sets up periodic updates every 24 hours
  */
 const initializeBankSync = () => {
-  // Run initial update
-  updateBanksFromCentralBank()
+  // First clean existing data to remove duplicates
+  cleanExistingBankData()
+    .then(success => {
+      if (success) {
+        console.log('Successfully cleaned existing bank data');
+      } else {
+        console.warn('Failed to clean existing bank data, continuing anyway');
+      }
+
+      // Run initial update
+      return updateBanksFromCentralBank();
+    })
     .then(result => {
       console.log('Initial bank sync result:', result);
     })
@@ -301,5 +446,6 @@ const initializeBankSync = () => {
 
 module.exports = {
   updateBanksFromCentralBank,
-  initializeBankSync
+  initializeBankSync,
+  cleanExistingBankData
 };

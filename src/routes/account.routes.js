@@ -98,10 +98,16 @@ router.post(
             // Check if account number already exists
             const existingAccount = await getBy('accounts', 'account_number', accountNumber);
             if (existingAccount) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Account number already exists'
-                });
+                return res.status(409)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/conflict',
+                        title: 'Resource Conflict',
+                        status: 409,
+                        detail: 'An account with this account number already exists in the system',
+                        instance: req.originalUrl,
+                        accountNumber: accountNumber
+                    });
             }
 
             // Prepare account data
@@ -144,10 +150,16 @@ router.get('/:id', authenticate, async (req, res) => {
         const account = await getById('accounts', req.params.id);
 
         if (!account) {
-            return res.status(404).json({
-                success: false,
-                message: 'Account not found'
-            });
+            return res.status(404)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/not-found',
+                    title: 'Resource Not Found',
+                    status: 404,
+                    detail: 'No account found with the provided ID',
+                    instance: req.originalUrl,
+                    accountId: req.params.id
+                });
         }
 
         // Check if the account belongs to the authenticated user
@@ -200,10 +212,16 @@ router.put(
             const account = await getById('accounts', accountId);
 
             if (!account) {
-                return res.status(404).json({
-                    success: false,
-                    message: 'Account not found'
-                });
+                return res.status(404)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/not-found',
+                        title: 'Resource Not Found',
+                        status: 404,
+                        detail: 'No account found with the provided ID',
+                        instance: req.originalUrl,
+                        accountId: accountId
+                    });
             }
 
             // Check if the account belongs to the authenticated user
@@ -250,10 +268,16 @@ router.get('/:id/balance', authenticate, async (req, res) => {
         const account = await getById('accounts', accountId);
 
         if (!account) {
-            return res.status(404).json({
-                success: false,
-                message: 'Account not found'
-            });
+            return res.status(404)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/not-found',
+                    title: 'Resource Not Found',
+                    status: 404,
+                    detail: 'No account found with the provided ID',
+                    instance: req.originalUrl,
+                    accountId: accountId
+                });
         }
 
         // Check if the account belongs to the authenticated user
@@ -337,10 +361,16 @@ router.delete('/:id', authenticate, async (req, res) => {
         const account = await getById('accounts', accountId);
 
         if (!account) {
-            return res.status(404).json({
-                success: false,
-                message: 'Account not found'
-            });
+            return res.status(404)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/not-found',
+                    title: 'Resource Not Found',
+                    status: 404,
+                    detail: 'No account found with the provided ID',
+                    instance: req.originalUrl,
+                    accountId: accountId
+                });
         }
 
         // Check if the account belongs to the authenticated user
@@ -354,19 +384,25 @@ router.delete('/:id', authenticate, async (req, res) => {
 
         // Check if account has non-zero balance
         if (account.balance !== 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'Cannot delete account with non-zero balance. Please transfer all funds or settle debts before closing the account.'
-            });
+            return res.status(409)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/conflict',
+                    title: 'Resource Conflict',
+                    status: 409,
+                    detail: 'The account has a non-zero balance which conflicts with the deletion request',
+                    instance: req.originalUrl,
+                    accountId: accountId,
+                    balance: account.balance,
+                    currency: account.currency
+                });
         }
 
         // Delete account from database
         await remove('accounts', accountId);
 
-        res.status(200).json({
-            success: true,
-            message: 'Account deleted successfully'
-        });
+        // Return 204 No Content status without body
+        res.status(204).end();
     } catch (error) {
         console.error('Error deleting account:', error);
         res.status(500).json({

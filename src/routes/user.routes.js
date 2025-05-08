@@ -61,10 +61,16 @@ router.post(
             // Check if username already exists
             const existingUser = await getBy('users', 'username', req.body.username);
             if (existingUser) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Username already exists'
-                });
+                return res.status(409)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/conflict',
+                        title: 'Resource Conflict',
+                        status: 409,
+                        detail: 'A user with this username already exists in the system',
+                        instance: req.originalUrl,
+                        username: req.body.username
+                    });
             }
 
             // Hash password
@@ -149,10 +155,16 @@ router.get('/:id', authenticate, async (req, res) => {
 
         const user = await getById('users', userId);
         if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
+            return res.status(404)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/not-found',
+                    title: 'Resource Not Found',
+                    status: 404,
+                    detail: 'No user found with the provided ID',
+                    instance: req.originalUrl,
+                    userId: userId
+                });
         }
 
         const formattedUser = formatUserForResponse(user);
@@ -276,10 +288,15 @@ router.put(
             // Check current password
             const isMatch = await bcrypt.compare(req.body.currentPassword, user.password_hash);
             if (!isMatch) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Current password is incorrect'
-                });
+                return res.status(401)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/authentication-error',
+                        title: 'Authentication Failed',
+                        status: 401,
+                        detail: 'The provided current password is incorrect',
+                        instance: req.originalUrl
+                    });
             }
 
             // Hash new password
@@ -342,15 +359,21 @@ router.delete('/:id', authenticate, async (req, res) => {
         // Check if any accounts have non-zero balance
         const accountsWithBalance = accounts.filter(account => parseFloat(account.balance) !== 0);
         if (accountsWithBalance.length > 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'Cannot delete user with accounts that have non-zero balance. Please settle all accounts first.',
-                accounts: accountsWithBalance.map(acc => ({
-                    accountNumber: acc.account_number,
-                    balance: acc.balance,
-                    currency: acc.currency
-                }))
-            });
+            return res.status(409)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/conflict',
+                    title: 'Resource Conflict',
+                    status: 409,
+                    detail: 'The user has accounts with non-zero balances which conflicts with the deletion request',
+                    instance: req.originalUrl,
+                    userId: userId,
+                    accounts: accountsWithBalance.map(acc => ({
+                        accountNumber: acc.account_number,
+                        balance: acc.balance,
+                        currency: acc.currency
+                    }))
+                });
         }
 
         // Delete all user accounts first
@@ -361,10 +384,8 @@ router.delete('/:id', authenticate, async (req, res) => {
         // Delete user from database
         await remove('users', userId);
 
-        res.status(200).json({
-            success: true,
-            message: 'User deleted successfully'
-        });
+        // Return 204 No Content status without body
+        res.status(204).end();
     } catch (error) {
         console.error('Error deleting user:', error);
         res.status(500).json({

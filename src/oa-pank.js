@@ -104,8 +104,18 @@ if (!isProduction && swaggerDocToUse.paths) {
   swaggerDocToUse.paths = newPaths;
 }
 
-// Setup Swagger UI
-app.use(swaggerBasePath, swaggerUi.serve, swaggerUi.setup(swaggerDocToUse));
+// Setup Swagger UI with cache disabled
+app.use(swaggerBasePath, swaggerUi.serve, swaggerUi.setup(swaggerDocToUse, {
+  explorer: true,
+  customCss: '.swagger-ui .topbar { display: none }',
+  swaggerOptions: {
+    docExpansion: 'list',
+    persistAuthorization: true,
+    displayRequestDuration: true,
+    filter: true,
+    deepLinking: true
+  }
+}));
 app.use(swaggerBasePath, express.static('node_modules/swagger-ui-dist'));
 
 

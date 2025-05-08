@@ -60,20 +60,30 @@ router.post(
             // Check if user exists
             const user = await getBy('users', 'username', req.body.username);
             if (!user) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'User not found'
-                });
+                return res.status(401)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/authentication-error',
+                        title: 'Authentication Failed',
+                        status: 401,
+                        detail: 'No user found with the provided username',
+                        instance: req.originalUrl
+                    });
             }
 
             // Check password
             const isMatch = await bcrypt.compare(req.body.password, user.password_hash || user.passwordHash);
 
             if (!isMatch) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'Incorrect password'
-                });
+                return res.status(401)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/authentication-error',
+                        title: 'Authentication Failed',
+                        status: 401,
+                        detail: 'The provided password is incorrect',
+                        instance: req.originalUrl
+                    });
             }
 
             // Create JWT token
@@ -122,10 +132,8 @@ router.delete('/current', authenticate, async (req, res) => {
         // Blacklist the current token
         blacklistToken(req.token);
 
-        res.status(200).json({
-            success: true,
-            message: 'Successfully logged out'
-        });
+        // Return 204 No Content status without body
+        res.status(204).end();
     } catch (error) {
         console.error('Error logging out:', error);
         res.status(500).json({
@@ -142,10 +150,15 @@ router.post('/current/refresh', authenticate, async (req, res) => {
         // Get user from database to ensure they still exist and are active
         const user = await getBy('users', 'username', req.user.username);
         if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'User not found'
-            });
+            return res.status(401)
+                .contentType('application/problem+json')
+                .json({
+                    type: 'https://example.com/authentication-error',
+                    title: 'Authentication Failed',
+                    status: 401,
+                    detail: 'The user associated with this session no longer exists',
+                    instance: req.originalUrl
+                });
         }
 
         // Blacklist the old token

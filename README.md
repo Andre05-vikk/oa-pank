@@ -116,3 +116,11 @@ To reset the database:
 ```bash
 npm run reset-db
 ```
+
+To clean bank data and remove duplicates:
+
+```bash
+npm run clean-bank-data
+```
+
+> **Note:** The system automatically cleans bank data on startup and during periodic updates (every 24 hours), but you can also run this command manually if needed.

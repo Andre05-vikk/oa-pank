@@ -24,6 +24,14 @@
     "lastUpdated": "2025-04-23T08:45:07.275Z"
   },
   {
+    "name": "FlowBank",
+    "transactionUrl": "https://bank.brigitakasemets.me/transactions/b2b",
+    "bankPrefix": "4f7",
+    "owners": "Brigita",
+    "jwksUrl": "https://bank.brigitakasemets.me/jwks.json",
+    "lastUpdated": "2025-05-08T13:07:51.285Z"
+  },
+  {
     "name": "JoonasePank",
     "transactionUrl": "https://joonasmagi.me/api/transactions/b2b",
     "bankPrefix": "b7a",
@@ -48,19 +56,19 @@
     "lastUpdated": "2025-04-23T08:45:07.275Z"
   },
   {
+    "name": "NLine Pank V2",
+    "transactionUrl": "https://pank.digikaup.online/api/transactions/b2b",
+    "bankPrefix": "c9b",
+    "owners": "NLine Group",
+    "jwksUrl": "https://pank.digikaup.online/api/jwks/v2",
+    "lastUpdated": "2025-05-01T06:20:22.363Z"
+  },
+  {
     "name": "OA-Pank",
     "transactionUrl": "https://hack2you.eu/oa-pank/transactions/b2b",
     "bankPrefix": "940",
     "owners": "Andre Park",
     "jwksUrl": "https://hack2you.eu/oa-pank/.well-known/jwks.json",
-    "lastUpdated": "2025-04-19T08:19:49.052Z"
-  },
-  {
-    "name": "OA-Pank",
-    "transactionUrl": "https://hack2you.eu/oa-pank/docs/transactions/b2b",
-    "bankPrefix": "928",
-    "owners": "Andre Park",
-    "jwksUrl": "https://hack2you.eu/oa-pank/docs/.well-known/jwks.json",
     "lastUpdated": "2025-04-19T08:19:49.052Z"
   },
   {

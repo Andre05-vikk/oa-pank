@@ -7,7 +7,8 @@
     "start": "node src/oa-pank.js",
     "dev": "nodemon src/oa-pank.js",
     "test": "jest",
-    "reset-db": "node src/scripts/reset-db.js"
+    "reset-db": "node src/scripts/reset-db.js",
+    "clean-bank-data": "node src/scripts/clean-bank-data.js"
   },
   "dependencies": {
     "axios": "^1.8.3",

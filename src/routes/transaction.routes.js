@@ -460,12 +460,12 @@ router.post('/incoming', async (req, res) => {
         // Check if the target account exists in our bank
         const bankPrefix = global.BANK_PREFIX;
         if (!toAccount.startsWith(bankPrefix)) {
-            return res.status(400)
+            return res.status(422)
                 .contentType('application/problem+json')
                 .json({
                     type: 'https://example.com/invalid-destination',
                     title: 'Invalid Destination Account',
-                    status: 400,
+                    status: 422,
                     detail: `Account ${toAccount} does not belong to this bank`,
                     instance: req.originalUrl,
                     accountNumber: toAccount,
