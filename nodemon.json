@@ -1,0 +1,11 @@
+{
+  "ignore": [
+    "data/*",
+    "data/database.sqlite",
+    "data/last_update.json",
+    "data/other_banks_data.json",
+    "logs/*",
+    "*.log"
+  ],
+  "verbose": true
+}

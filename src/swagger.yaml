@@ -60,6 +60,10 @@ components:
           format: uri
           example: /users/123
           description: A URI reference that identifies the specific occurrence of the problem
+        success:
+          type: boolean
+          example: false
+          description: Indicates that the operation was not successful
 
     ValidationError:
       type: object
@@ -130,7 +134,7 @@ components:
       properties:
         _id:
           type: string
-          example: 60d21b4667d0d8992e610c85
+          example: "60d21b4667d0d8992e610c85"
         username:
           type: string
           example: johndoe
@@ -213,7 +217,7 @@ components:
       properties:
         _id:
           type: string
-          example: 60d21b4667d0d8992e610c85
+          example: "60d21b4667d0d8992e610c85"
         accountNumber:
           type: string
           example: OAP12345678
@@ -260,56 +264,92 @@ components:
       properties:
         _id:
           type: string
-          example: 60d21b4667d0d8992e610c85
+          example: "60d21b4667d0d8992e610c85"
+          description: Unique identifier for the transaction
         transactionId:
           type: string
           example: OAP-1620000000000-12345
+          description: Human-readable transaction identifier
         accountFrom:
           type: string
           example: 31359474302
+          description: Source account number
         accountTo:
           type: string
           example: 31300000000
+          description: Destination account number
         amount:
           type: number
           format: float
           example: 100.00
+          description: Transaction amount
         currency:
           type: string
           enum: [EUR, USD, GBP, CHF, JPY, AUD, CAD, SEK, NOK, DKK, PLN, CZK]
           example: EUR
+          description: Transaction currency
         status:
           type: string
           enum: [pending, inProgress, completed, failed]
           example: completed
+          description: |
+            Current status of the transaction:
+            - pending: Transaction is waiting to be processed
+            - inProgress: Transaction is being processed
+            - completed: Transaction has been successfully completed
+            - failed: Transaction has failed
         type:
           type: string
           enum: [internal, external]
           example: internal
+          description: |
+            Type of transaction:
+            - internal: Transaction between accounts in our bank
+            - external: Transaction to an account in another bank
         description:
           type: string
           example: Payment for services
+          description: Description or purpose of the transaction
+        reference:
+          type: string
+          example: 4f7d6e5c-3b2a-1098-7f6e-5d4c3b2a1098
+          description: Unique reference for the transaction (used for tracking)
         errorMessage:
           type: string
           nullable: true
+          description: Error message if the transaction failed
         initiatedBy:
           type: string
           example: 60d21b4667d0d8992e610c85
+          description: ID of the user who initiated the transaction
         signature:
           type: string
           nullable: true
+          description: Digital signature for external transactions
         senderBank:
           type: string
           nullable: true
+          description: Name or identifier of the sending bank
         receiverBank:
           type: string
           nullable: true
+          description: Name or identifier of the receiving bank
+        message:
+          type: string
+          example: "Transaction to Bank Name (31300000000) has been queued for processing"
+          description: Additional information about the transaction status
+        externalBankName:
+          type: string
+          example: "Reference Bank"
+          description: Name of the external bank for external transactions
         createdAt:
           type: string
           format: date-time
+          description: When the transaction was created
         updatedAt:
           type: string
           format: date-time
+          description: When the transaction was last updated
     TransactionInput:
       type: object
       required:
@@ -321,21 +361,30 @@ components:
         accountFrom:
           type: string
           example: 31359474302
+          description: The source account number (must exist in our bank and belong to the authenticated user)
         accountTo:
           type: string
           example: 31300000000
+          description: |
+            The destination account number. Can be:
+            1. An account in our bank (starts with our bank prefix and exists in our database)
+            2. An account in another bank (starts with another bank's prefix)
+            3. A test account (starts with our bank prefix but doesn't exist in our database)
         amount:
           type: number
           format: float
           minimum: 0.01
           example: 100.00
+          description: The amount to transfer (must be greater than 0)
         currency:
           type: string
           enum: [EUR, USD, GBP, CHF, JPY, AUD, CAD, SEK, NOK, DKK, PLN, CZK]
           example: EUR
+          description: The currency of the transaction
         description:
           type: string
           example: Payment for services
+          description: Optional description for the transaction
     JWKSResponse:
       type: object
       properties:
@@ -471,11 +520,14 @@ paths:
                     example: 401
                   detail:
                     type: string
-                    example: "The provided credentials are invalid"
+                    example: "The provided password is incorrect"
                   instance:
                     type: string
                     format: uri
                     example: "/sessions"
+                  success:
+                    type: boolean
+                    example: false
 
   /sessions/current:
     delete:
@@ -486,8 +538,19 @@ paths:
       security:
         - bearerAuth: []
       responses:
-        "204":
-          description: Logout successful (No Content)
+        "200":
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Logged out successfully"
         "401":
           description: Unauthorized
           content:
@@ -514,9 +577,9 @@ paths:
                   success:
                     type: boolean
                     example: true
-                  message:
+                  token:
                     type: string
-                    example: Session refreshed successfully
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiIxMjMiLCJpZCI6IjEyMyIsInVzZXJuYW1lIjoiam9obmRvZSIsImlhdCI6MTYxNjAwMDAwMCwiZXhwIjoxNjE2MDg2NDAwfQ.X_x-8wnfLq9_Pn6D9V8D6LMTRGQHJlGV1_1-QQ"
                   expiresAt:
                     type: string
                     format: date-time
@@ -544,9 +607,30 @@ paths:
         "500":
           description: Internal server error
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: "#/components/schemas/Error"
+                type: object
+                properties:
+                  type:
+                    type: string
+                    format: uri
+                    example: "https://example.com/server-error"
+                  title:
+                    type: string
+                    example: "Server Error"
+                  status:
+                    type: integer
+                    example: 500
+                  detail:
+                    type: string
+                    example: "Password hash not found in user data"
+                  instance:
+                    type: string
+                    format: uri
+                    example: "/users/123/password"
+                  success:
+                    type: boolean
+                    example: false
 
   /users/me:
     get:
@@ -589,7 +673,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            type: integer
           description: User ID
       responses:
         "200":
@@ -634,7 +718,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            type: integer
           description: User ID
       requestBody:
         required: true
@@ -702,7 +786,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            type: integer
           description: User ID
       responses:
         "204":
@@ -739,7 +823,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            type: integer
           description: User ID
       requestBody:
         required: true
@@ -795,6 +879,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "500":
+          description: Internal server error
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    format: uri
+                    example: "https://example.com/server-error"
+                  title:
+                    type: string
+                    example: "Server Error"
+                  status:
+                    type: integer
+                    example: 500
+                  detail:
+                    type: string
+                    example: "Password hash not found in user data"
+                  instance:
+                    type: string
+                    format: uri
+                    example: "/users/123/password"
+                  success:
+                    type: boolean
+                    example: false
 
   /accounts:
     get:
@@ -877,7 +988,7 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            type: integer
           description: Account ID
       responses:
         "200":
@@ -922,11 +1033,22 @@ paths:
           in: path
           required: true
           schema:
-            type: string
+            type: integer
           description: Account ID
       responses:
-        "204":
-          description: Account deleted successfully (No Content)
+        "200":
+          description: Account deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Account deleted successfully"
         "409":
           description: Conflict - Account has non-zero balance
           content:
@@ -960,6 +1082,9 @@ paths:
                   currency:
                     type: string
                     example: "EUR"
+                  success:
+                    type: boolean
+                    example: false
         "401":
           description: Unauthorized
           content:
@@ -999,6 +1124,9 @@ paths:
                   accountId:
                     type: string
                     example: "123"
+                  success:
+                    type: boolean
+                    example: false
 
   /transactions:
     get:
@@ -1068,7 +1196,14 @@ paths:
       tags:
         - Transactions
       summary: Create transaction
-      description: Creates a new transaction
+      description: |
+        Creates a new transaction. The system handles three types of transactions:
+
+        1. Internal transactions - When the destination account exists in our bank
+        2. External transactions - When the destination account belongs to another bank
+        3. Test transactions - When the destination account has our bank prefix but doesn't exist in our database
+
+        For test transactions, the system will create a pending transaction without verifying the account's existence.
       security:
         - bearerAuth: []
       requestBody:
@@ -1079,7 +1214,7 @@ paths:
               $ref: "#/components/schemas/TransactionInput"
       responses:
         "201":
-          description: Transaction initiated successfully
+          description: Transaction created successfully (for internal transactions)
           content:
             application/json:
               schema:
@@ -1090,6 +1225,27 @@ paths:
                     example: true
                   transaction:
                     $ref: "#/components/schemas/Transaction"
+        "202":
+          description: Transaction accepted and queued for processing (for external or test transactions)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  transaction:
+                    allOf:
+                      - $ref: "#/components/schemas/Transaction"
+                      - type: object
+                        properties:
+                          message:
+                            type: string
+                            example: "Transaction to Bank Name (31300000000) has been queued for processing"
+                          externalBankName:
+                            type: string
+                            example: "Reference Bank"
         "400":
           description: Bad request - Missing or invalid fields
           content:
@@ -1115,44 +1271,76 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "422":
-          description: Unprocessable Entity - Insufficient funds or other business logic error
+          description: Unprocessable Entity - Insufficient funds, unknown bank, or other business logic error
           content:
             application/problem+json:
               schema:
-                type: object
-                properties:
-                  type:
-                    type: string
-                    format: uri
-                    example: "https://example.com/insufficient-funds"
-                  title:
-                    type: string
-                    example: "Insufficient Funds"
-                  status:
-                    type: integer
-                    example: 422
-                  detail:
-                    type: string
-                    example: "Your current balance is 100.50 EUR, but the transaction requires 200.00 EUR"
-                  instance:
-                    type: string
-                    format: uri
-                    example: "/transactions"
-                  available:
-                    type: number
-                    example: 100.50
-                  availableCurrency:
-                    type: string
-                    example: "EUR"
-                  required:
-                    type: number
-                    example: 200.00
-                  requiredCurrency:
-                    type: string
-                    example: "EUR"
-                  accountNumber:
-                    type: string
-                    example: "OAP12345678"
+                oneOf:
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        format: uri
+                        example: "https://example.com/insufficient-funds"
+                      title:
+                        type: string
+                        example: "Insufficient Funds"
+                      status:
+                        type: integer
+                        example: 422
+                      detail:
+                        type: string
+                        example: "Your current balance is 100.50 EUR, but the transaction requires 200.00 EUR"
+                      instance:
+                        type: string
+                        format: uri
+                        example: "/transactions"
+                      available:
+                        type: number
+                        example: 100.50
+                      availableCurrency:
+                        type: string
+                        example: "EUR"
+                      required:
+                        type: number
+                        example: 200.00
+                      requiredCurrency:
+                        type: string
+                        example: "EUR"
+                      accountNumber:
+                        type: string
+                        example: "OAP12345678"
+                      success:
+                        type: boolean
+                        example: false
+                  - type: object
+                    properties:
+                      type:
+                        type: string
+                        format: uri
+                        example: "https://example.com/unknown-bank"
+                      title:
+                        type: string
+                        example: "Unknown Bank"
+                      status:
+                        type: integer
+                        example: 422
+                      detail:
+                        type: string
+                        example: "The bank with prefix 999 is not recognized"
+                      instance:
+                        type: string
+                        format: uri
+                        example: "/transactions"
+                      bankPrefix:
+                        type: string
+                        example: "999"
+                      accountNumber:
+                        type: string
+                        example: "99900000000"
+                      success:
+                        type: boolean
+                        example: false
         "500":
           description: Server error
           content:

@@ -49,10 +49,11 @@ const createProblemDetails = (options = {}) => {
  * @param {string} [options.detail] - Human-readable explanation specific to this occurrence of the problem
  * @param {string} [options.instance] - URI reference that identifies the specific occurrence of the problem
  * @param {Object} [options.extensions] - Additional members that provide more details about the error
+ * @param {boolean} [options.success=false] - Success flag for API responses (for test compatibility)
  */
 const sendProblemResponse = (res, options = {}) => {
     const { status = 500 } = options;
-    
+
     // If title is not provided, use the standard HTTP status text
     if (!options.title) {
         options.title = getStatusText(status);
@@ -63,6 +64,11 @@ const sendProblemResponse = (res, options = {}) => {
         ...options,
         status
     });
+
+    // Always add success: false for test compatibility
+    if (options.success === undefined) {
+        problemDetails.success = false;
+    }
 
     // Set the appropriate content type and status code
     res.status(status).contentType('application/problem+json').json(problemDetails);

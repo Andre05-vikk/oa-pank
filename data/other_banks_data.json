@@ -8,6 +8,22 @@
     "lastUpdated": "2025-04-08T20:23:39.095Z"
   },
   {
+    "name": "DigiPank",
+    "transactionUrl": "https://pank.digikaup.online/transactions/b2b",
+    "bankPrefix": "d38",
+    "owners": "Ove",
+    "jwksUrl": "https://pank.digikaup.online/transactions/jwks",
+    "lastUpdated": "2025-05-15T20:54:56.460Z"
+  },
+  {
+    "name": "DIPANK",
+    "transactionUrl": "https://pank.digikaup.online/transactions/b2b",
+    "bankPrefix": "c44",
+    "owners": "OVE",
+    "jwksUrl": "https://pank.digikaup.online/jwks.json",
+    "lastUpdated": "2025-05-18T06:56:54.354Z"
+  },
+  {
     "name": "Eero Bank",
     "transactionUrl": "https://bank.eerovallistu.site/transactions/b2b",
     "bankPrefix": "be5",
@@ -22,22 +38,6 @@
     "owners": "Efe",
     "jwksUrl": "https://bank.bee-srv.me/jwks.json",
     "lastUpdated": "2025-04-23T08:45:07.275Z"
-  },
-  {
-    "name": "FlowBank",
-    "transactionUrl": "https://bank.brigitakasemets.me/transactions/b2b",
-    "bankPrefix": "4f7",
-    "owners": "Brigita",
-    "jwksUrl": "https://bank.brigitakasemets.me/jwks.json",
-    "lastUpdated": "2025-05-08T13:07:51.285Z"
-  },
-  {
-    "name": "JoonasePank",
-    "transactionUrl": "https://joonasmagi.me/api/transactions/b2b",
-    "bankPrefix": "b7a",
-    "owners": "Joonas Mägi",
-    "jwksUrl": "https://joonasmagi.me/api/transactions/jwks",
-    "lastUpdated": "2025-04-08T20:23:39.095Z"
   },
   {
     "name": "Nele Bank",

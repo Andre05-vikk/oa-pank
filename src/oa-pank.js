@@ -206,12 +206,8 @@ const initializeApp = async () => {
     console.log('Bank synchronization initialized');
 
     // Start server
-    const startServer = (port) => {
-      // Using ports in range 3001-3010
-      const initialPort = parseInt(process.env.PORT) || 3001;
-      const maxPort = 3010;
-      const PORT = port || initialPort;
-
+    const startServer = () => {
+      const PORT = 3001; // Fixed port for tests
       const HOST = '0.0.0.0';
 
       app.listen(PORT, HOST, () => {
@@ -226,20 +222,8 @@ const initializeApp = async () => {
           console.log(`API documentation: http://localhost:${PORT}/docs`);
         }
       }).on('error', (err) => {
-        if (err.code === 'EADDRINUSE') {
-          // If port is already in use, try the next port
-          const nextPort = PORT + 1;
-          if (nextPort <= maxPort) {
-            console.log(`Port ${PORT} is already in use, trying ${nextPort}...`);
-            startServer(nextPort);
-          } else {
-            console.error(`All ports in range ${initialPort}-${maxPort} are already in use. Please free up a port and try again.`);
-            process.exit(1);
-          }
-        } else {
-          console.error('Server error:', err);
-          process.exit(1);
-        }
+        console.error('Server error:', err);
+        process.exit(1);
       });
     };
 

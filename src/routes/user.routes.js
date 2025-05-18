@@ -69,7 +69,9 @@ router.post(
                         status: 409,
                         detail: 'A user with this username already exists in the system',
                         instance: req.originalUrl,
-                        username: req.body.username
+                        username: req.body.username,
+                        success: false, // Lisatud success väli testide jaoks
+                        message: 'Username already exists' // Lisatud message väli testide jaoks
                     });
             }
 
@@ -92,9 +94,10 @@ router.post(
             // Format user for API response
             const formattedUser = formatUserForResponse(user);
 
+            // Return response exactly as specified in OpenAPI spec (without message field)
+            // This must match the schema in the OpenAPI spec exactly
             res.status(201).json({
                 success: true,
-                message: 'User created successfully',
                 user: formattedUser
             });
         } catch (error) {
@@ -146,7 +149,9 @@ router.get('/:id', authenticate, async (req, res) => {
         }
 
         // Check if user is requesting their own data
-        if (req.user.id !== userId) {
+        // Convert both IDs to strings for consistent comparison
+        // Check both id and _id fields to support both formats
+        if (req.user.id.toString() !== userId.toString() && req.user._id.toString() !== userId.toString()) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied: You can only view your own profile'
@@ -163,7 +168,8 @@ router.get('/:id', authenticate, async (req, res) => {
                     status: 404,
                     detail: 'No user found with the provided ID',
                     instance: req.originalUrl,
-                    userId: userId
+                    userId: userId,
+                    success: false // Lisatud success väli testide jaoks
                 });
         }
 
@@ -209,7 +215,8 @@ router.put(
             const userId = req.params.id;
 
             // Check if user is updating their own data
-            if (req.user.id !== userId) {
+            // Check both id and _id fields to support both formats
+            if (req.user.id.toString() !== userId.toString() && req.user._id.toString() !== userId.toString()) {
                 return res.status(403).json({
                     success: false,
                     message: 'Access denied: You can only update your own profile'
@@ -285,8 +292,31 @@ router.put(
 
             const user = await getById('users', userId);
 
-            // Check current password
-            const isMatch = await bcrypt.compare(req.body.currentPassword, user.password_hash);
+            // Debug log
+            console.log(`Password change: User data:`, {
+                id: user.id,
+                username: user.username,
+                passwordHash: user.passwordHash,
+                password_hash: user.password_hash
+            });
+
+            // Check current password - handle both camelCase and snake_case field names
+            const passwordHash = user.passwordHash || user.password_hash;
+
+            if (!passwordHash) {
+                return res.status(500)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/server-error',
+                        title: 'Server Error',
+                        status: 500,
+                        detail: 'Password hash not found in user data',
+                        instance: req.originalUrl,
+                        success: false
+                    });
+            }
+
+            const isMatch = await bcrypt.compare(req.body.currentPassword, passwordHash);
             if (!isMatch) {
                 return res.status(401)
                     .contentType('application/problem+json')
@@ -295,7 +325,8 @@ router.put(
                         title: 'Authentication Failed',
                         status: 401,
                         detail: 'The provided current password is incorrect',
-                        instance: req.originalUrl
+                        instance: req.originalUrl,
+                        success: false
                     });
             }
 
@@ -303,8 +334,17 @@ router.put(
             const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(req.body.newPassword, salt);
 
-            // Update password in database
-            await update('users', userId, { password_hash: hashedPassword });
+            // Determine which field name to use based on what's in the user object
+            const fieldName = user.hasOwnProperty('passwordHash') ? 'passwordHash' : 'password_hash';
+
+            // Update password in database with the correct field name
+            const updateData = {};
+            updateData[fieldName] = hashedPassword;
+
+            // Debug log
+            console.log(`Password change: Updating with field name: ${fieldName}`);
+
+            await update('users', userId, updateData);
 
             res.status(200).json({
                 success: true,
@@ -336,7 +376,8 @@ router.delete('/:id', authenticate, async (req, res) => {
         }
 
         // Check if user is deleting their own account
-        if (parseInt(req.user.id) !== parseInt(userId)) {
+        // Check both id and _id fields to support both formats
+        if (req.user.id.toString() !== userId.toString() && req.user._id.toString() !== userId.toString()) {
             return res.status(403).json({
                 success: false,
                 message: 'Access denied: You can only delete your own account'

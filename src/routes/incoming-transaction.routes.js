@@ -3,6 +3,7 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const { verifyIncomingTransaction } = require('../config/interbank.config');
 const { getBy, getDatabase } = require('../config/database');
+const { formatTransactionForResponse, toCamelCase } = require('../lib/format.util');
 
 /**
  * Handle incoming transactions from other banks
@@ -206,7 +207,7 @@ async function handleDirectTransactionData(req, res) {
     };
 
     // Insert the transaction into our database
-    await db.run(`
+    const result = await db.run(`
       INSERT INTO transactions (from_account, to_account, amount, currency, description, reference, status)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `, [
@@ -219,11 +220,17 @@ async function handleDirectTransactionData(req, res) {
       transactionData.status
     ]);
 
+    // Get the inserted transaction
+    const transaction = await db.get('SELECT * FROM transactions WHERE id = ?', result.lastID);
+
+    // Format the transaction for API response
+    const formattedTransaction = formatTransactionForResponse(transaction);
+
     // Return success response
     return res.status(200).json({
       success: true,
       message: 'Transaction processed successfully',
-      transactionReference: reference
+      transaction: formattedTransaction
     });
   } catch (error) {
     console.error('Failed to process direct transaction data:', error);

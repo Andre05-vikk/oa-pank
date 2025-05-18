@@ -72,6 +72,10 @@ ehthumbs.db
 .tmp
 .temp
 
+# External test directory
+#/test_external/
+#/test_external/*
+
 # Docker related
 .docker-data/
 docker-volumes/

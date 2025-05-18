@@ -182,7 +182,15 @@ const getById = async (tableName, id) => {
             return null;
         }
 
-        const result = await db.get(`SELECT * FROM ${tableName} WHERE id = ?`, id);
+        // Convert id to number to ensure proper comparison in SQLite
+        const numericId = parseInt(id, 10);
+
+        console.log(`getById: Looking for ${tableName} with ID ${numericId} (original: ${id})`);
+
+        const result = await db.get(`SELECT * FROM ${tableName} WHERE id = ?`, numericId);
+
+        console.log(`getById result: ${result ? 'Found' : 'Not found'}`);
+
         // Convert result to camelCase
         return result ? toCamelCase(result) : null;
     } catch (error) {
@@ -297,9 +305,16 @@ const insert = async (tableName, data) => {
         // Convert data from camelCase to snake_case if needed
         const snakeCaseData = Object.keys(data).some(key => /[A-Z]/.test(key)) ? toSnakeCase(data) : data;
 
-        const keys = Object.keys(snakeCaseData);
+        // Make sure timestamps are included
+        const dataWithTimestamps = {
+            ...snakeCaseData,
+            created_at: snakeCaseData.created_at || new Date().toISOString(),
+            updated_at: snakeCaseData.updated_at || new Date().toISOString()
+        };
+
+        const keys = Object.keys(dataWithTimestamps);
         const placeholders = keys.map(() => '?').join(', ');
-        const values = keys.map(key => snakeCaseData[key]);
+        const values = keys.map(key => dataWithTimestamps[key]);
 
         const result = await db.run(`
             INSERT INTO ${tableName} (${keys.join(', ')})
@@ -307,7 +322,7 @@ const insert = async (tableName, data) => {
         `, values);
 
         // Return the inserted data with ID, converted to camelCase
-        const insertedData = { id: result.lastID, ...snakeCaseData };
+        const insertedData = { id: result.lastID, ...dataWithTimestamps };
         return toCamelCase(insertedData);
     } catch (error) {
         console.error(`Error in insert for ${tableName}:`, error);
