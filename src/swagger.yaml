@@ -2,7 +2,7 @@ openapi: 3.0.0
 info:
   title: OA-Pank API
   version: 1.0.1
-  description: API documentation for OA-Pank banking system with RFC 7231 compliant responses
+  description: API documentation for OA-Pank banking system 
 
 servers:
   - url: /
@@ -436,7 +436,7 @@ paths:
                   user:
                     $ref: "#/components/schemas/User"
         "400":
-          description: Bad request
+          description: Bad request - Missing or invalid fields
           content:
             application/json:
               schema:
@@ -468,6 +468,9 @@ paths:
                   username:
                     type: string
                     example: "johndoe"
+                  success:
+                    type: boolean
+                    example: false
         "401":
           description: Unauthorized
           content:
@@ -494,7 +497,16 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LoginResponse"
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  user:
+                    $ref: "#/components/schemas/User"
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiIxMjMiLCJpZCI6IjEyMyIsInVzZXJuYW1lIjoiam9obmRvZSIsImlhdCI6MTYxNjAwMDAwMCwiZXhwIjoxNjE2MDg2NDAwfQ.X_x-8wnfLq9_Pn6D9V8D6LMTRGQHJlGV1_1-QQ"
         "400":
           description: Bad request - Missing or invalid fields
           content:
@@ -1247,11 +1259,19 @@ paths:
                             type: string
                             example: "Reference Bank"
         "400":
-          description: Bad request - Missing or invalid fields
+          description: |
+            Bad request - Missing or invalid fields, or OA-Pank is not registered in Central Bank.
+            This error is also returned if the account sending the funds does not belong to a bank registered in Central Bank.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ValidationError"
+                oneOf:
+                  - $ref: "#/components/schemas/ValidationError"
+                  - type: object
+                    properties:
+                      error:
+                        type: string
+                        example: "The account sending the funds does not belong to a bank registered in Central Bank"
         "401":
           description: Unauthorized
           content:
@@ -1267,9 +1287,33 @@ paths:
         "404":
           description: Not found - Account not found
           content:
-            application/json:
+            application/problem+json:
               schema:
-                $ref: "#/components/schemas/Error"
+                type: object
+                properties:
+                  type:
+                    type: string
+                    format: uri
+                    example: "https://example.com/not-found"
+                  title:
+                    type: string
+                    example: "Resource Not Found"
+                  status:
+                    type: integer
+                    example: 404
+                  detail:
+                    type: string
+                    example: "No account found with the provided ID"
+                  instance:
+                    type: string
+                    format: uri
+                    example: "/accounts/123"
+                  accountId:
+                    type: string
+                    example: "123"
+                  success:
+                    type: boolean
+                    example: false
         "422":
           description: Unprocessable Entity - Insufficient funds, unknown bank, or other business logic error
           content:

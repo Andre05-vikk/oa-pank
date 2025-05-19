@@ -29,7 +29,7 @@ This document outlines the specifications for the OA-Pank banking system, which 
 - Users can view their transaction history with filtering options (date range, status, amount)
 - Transaction amounts must be positive and within allowed limits
 - Transactions can only be made between accounts with the same currency
-- Failed transactions include detailed error messages following RFC 7807/9457 format
+- Failed transactions include detailed error messages following RFC  format
 - Transactions are atomic - either fully completed or fully rolled back
 
 ## Central Bank Integration
@@ -48,7 +48,7 @@ This document outlines the specifications for the OA-Pank banking system, which 
 - SwaggerUI is available at /docs, documenting all bank API endpoints
 - All API endpoints defined in the Swagger documentation are implemented and conform to the documentation
 - API endpoints return appropriate HTTP status codes
-- API endpoints handle errors robustly and provide descriptive error messages using RFC 7807/9457 format
+- API endpoints handle errors robustly and provide descriptive error messages
 - API endpoints require proper authentication when necessary
 - API documentation includes request/response examples
 - API endpoints follow RESTful design principles
@@ -63,7 +63,7 @@ This document outlines the specifications for the OA-Pank banking system, which 
 - The system implements circuit breakers for external service calls
 - Database transaction errors are properly handled and rolled back when necessary
 - Input validation errors return descriptive messages to help users correct their input
-- All error responses follow the RFC 7807/9457 Problem Details standard format
+- All error responses follow the RFC Problem Details standard format
 - Error responses use the 'application/problem+json' content type
 - Error responses include type, title, status, detail, and instance fields
 - Error types are identified with URIs that describe the problem type

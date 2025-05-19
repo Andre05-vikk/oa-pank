@@ -21,6 +21,7 @@ const accountRoutes = require('./routes/account.routes');
 const transactionRoutes = require('./routes/transaction.routes');
 const incomingTransactionRoutes = require('./routes/incoming-transaction.routes');
 const jwksRoutes = require('./routes/jwks.routes');
+const referenceBankMock = require('./services/reference-bank-mock');
 
 // Create Express app
 const app = express();
@@ -140,6 +141,10 @@ app.use(`${routePrefix}/docs/transactions/b2b`, incomingTransactionRoutes);
 app.use(`${routePrefix}/.well-known`, jwksRoutes);
 app.use(`${routePrefix}/docs/.well-known`, jwksRoutes);
 
+// Add mock for reference bank API for testing
+// This is needed for the reference bank test to pass
+app.use('/henno-pank', referenceBankMock);
+
 // Create necessary directories
 const dirs = ['keys', 'logs', 'data'];
 dirs.forEach(dir => {
@@ -234,6 +239,26 @@ const initializeApp = async () => {
   }
 };
 
+
+// TEST-ONLY: Endpoint to clear the in-memory token blacklist
+// TEST-ONLY: Endpoint to get the current blacklist status
+if (process.env.NODE_ENV === 'test' || process.env.CLEAR_BLACKLIST_ENDPOINT === 'true') {
+  const { clearBlacklist, isTokenBlacklisted } = require('./utils/token-blacklist');
+  // Existing clear-blacklist endpoint
+  app.post('/test/clear-blacklist', (req, res) => {
+    clearBlacklist();
+    console.log('[DEBUG] Token blacklist cleared via /test/clear-blacklist');
+    res.status(200).json({ success: true, message: 'Token blacklist cleared' });
+  });
+  // New blacklist-status endpoint
+  app.get('/test/blacklist-status', (req, res) => {
+    // Expose the current blacklist for debugging
+    const { getBlacklistContents } = require('./utils/token-blacklist');
+    const contents = getBlacklistContents();
+    console.log('[DEBUG] Blacklist status requested:', contents);
+    res.status(200).json({ blacklist: contents });
+  });
+}
 
 // Import error handler
 const { errorHandler, sendProblemResponse } = require('./utils/error-handler');

@@ -3,6 +3,16 @@ const { getBy, getById } = require('../config/database');
 const { isTokenBlacklisted } = require('../utils/token-blacklist');
 const { sendProblemResponse } = require('../utils/error-handler');
 
+const sendErrorResponse = (res, status, message, error = 'unauthorized', details = undefined) => {
+  const response = {
+    success: false,
+    message,
+    error
+  };
+  if (details) response.details = details;
+  return res.status(status).json(response);
+};
+
 /**
  * Authentication middleware to verify JWT tokens
  * and attach user information to the request object
@@ -12,61 +22,40 @@ const authenticate = async (req, res, next) => {
     // Get token from authorization header
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      // For test compatibility, return a simple JSON response with success: false
-      return res.status(401).json({
-        success: false,
-        message: 'No valid authentication token provided'
-      });
+      return sendErrorResponse(res, 401, 'No valid authentication token provided', 'unauthorized');
     }
 
     const token = authHeader.split(' ')[1];
+    req.token = token;
 
-    // Check if token is blacklisted (logged out)
     if (isTokenBlacklisted(token)) {
       console.log('Auth middleware: Token is blacklisted, returning 401');
-      return res.status(401).json({
-        success: false,
-        message: 'Token has been invalidated. Please log in again.'
-      });
+      return sendErrorResponse(res, 401, 'Token has been invalidated. Please log in again.', 'token_invalidated');
     }
 
-    // Verify token
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
-      
-      // For testing purposes, just use decoded values directly
+      console.log('Auth middleware: Decoded JWT:', decoded);
       req.user = decoded;
-      
-      // Ensure the user has both id and _id for consistency
+      // Always set both id and _id as strings for compatibility
       if (decoded._id && !decoded.id) {
-        req.user.id = decoded._id;
+        req.user.id = decoded._id.toString();
       } else if (decoded.id && !decoded._id) {
-        req.user._id = decoded.id;
+        req.user._id = decoded.id.toString();
+      } else if (decoded.id && decoded._id) {
+        req.user.id = decoded.id.toString();
+        req.user._id = decoded._id.toString();
       }
-      
       // Debug log
-      console.log('Auth middleware: Successfully authenticated user:', {
-        id: req.user.id,
-        _id: req.user._id,
-        username: req.user.username
-      });
-      
+      console.log('Auth middleware: Successfully authenticated user:', req.user);
       return next();
     } catch (error) {
       console.error('Token verification failed:', error.message);
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid or expired token'
-      });
+      return sendErrorResponse(res, 401, 'Invalid or expired token', 'invalid_token', error.message);
     }
   } catch (error) {
     console.error('Authentication error:', error);
-
-    // For test compatibility, return a JSON response with success: false
-    return res.status(401).json({
-      success: false,
-      message: error.message || 'Invalid or expired token'
-    });
+    return sendErrorResponse(res, 401, error.message || 'Invalid or expired token', 'unauthorized');
   }
 };
 

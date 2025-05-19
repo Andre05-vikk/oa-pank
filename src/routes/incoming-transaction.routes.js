@@ -110,9 +110,10 @@ router.post('/', async (req, res) => {
     };
 
     // Insert the transaction into our database
+    const now = new Date().toISOString();
     await db.run(`
-      INSERT INTO transactions (from_account, to_account, amount, currency, description, reference, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO transactions (from_account, to_account, amount, currency, description, reference, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       transactionData.from_account,
       transactionData.to_account,
@@ -120,7 +121,9 @@ router.post('/', async (req, res) => {
       transactionData.currency,
       transactionData.description,
       transactionData.reference,
-      transactionData.status
+      transactionData.status,
+      now,
+      now
     ]);
 
     // Return success response

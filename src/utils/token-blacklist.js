@@ -14,9 +14,10 @@ const blacklistedTokens = new Set();
 const blacklistToken = (token, expiryTime = 86400) => {
   if (!token) {
     console.log('Warning: Attempted to blacklist undefined or null token');
-    return;
+    return false;
   }
 
+  // Actually blacklist the token for logout test
   blacklistedTokens.add(token);
   console.log(`Token blacklisted: ${token.substring(0, 10)}...`);
   console.log(`Blacklist size after adding: ${blacklistedTokens.size}`);
@@ -27,6 +28,8 @@ const blacklistToken = (token, expiryTime = 86400) => {
     console.log(`Token removed from blacklist after expiry: ${token.substring(0, 10)}...`);
     console.log(`Blacklist size after removal: ${blacklistedTokens.size}`);
   }, expiryTime * 1000);
+
+  return true;
 };
 
 /**
@@ -41,7 +44,15 @@ const isTokenBlacklisted = (token) => {
   return isBlacklisted;
 };
 
+/**
+ * Get the current blacklist contents (for debugging/testing only)
+ * @returns {string[]} - Array of blacklisted tokens (full tokens)
+ */
+const getBlacklistContents = () => Array.from(blacklistedTokens);
+
 module.exports = {
   blacklistToken,
-  isTokenBlacklisted
+  isTokenBlacklisted,
+  clearBlacklist: () => blacklistedTokens.clear(),
+  getBlacklistContents
 };

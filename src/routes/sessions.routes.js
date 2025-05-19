@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const {getBy} = require('../config/database');
 const {authenticate} = require('../middleware/auth.middleware');
 const {blacklistToken} = require('../utils/token-blacklist');
+const { v4: uuidv4 } = require('uuid');
 
 // Helper function to convert snake_case to camelCase
 const toCamelCase = (obj) => {
