@@ -96,8 +96,13 @@ settings.local.js
 # Test and validator folders (do not commit to GitHub)
 test_external/
 oa-pank-validator/
+test/
+__tests__/
+*.test.js
+*.spec.js
 
 # Specific data files
 data/central_bank_data.json
 data/other_banks_data.json
 data/last_update.json
+data/database.sqlite
