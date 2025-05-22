@@ -304,6 +304,9 @@ router.post(
                             });
                     }
 
+                    // Define timestamp for transaction
+                    const now = new Date().toISOString();
+
                     // Deduct the amount from the sender's account
                     await db.run(
                         'UPDATE accounts SET balance = balance - ?, updated_at = CURRENT_TIMESTAMP WHERE account_number = ?',

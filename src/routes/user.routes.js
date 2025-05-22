@@ -275,7 +275,8 @@ router.put(
             const userId = req.params.id;
 
             // Check if user is updating their own password
-            if (req.user.id !== userId) {
+            // Check both id and _id fields to support both formats
+            if (req.user.id.toString() !== userId.toString() && req.user._id.toString() !== userId.toString()) {
                 return res.status(403).json({
                     success: false,
                     message: 'Access denied: You can only change your own password'
