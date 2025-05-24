@@ -71,10 +71,15 @@ ehthumbs.db
 # Temporary files
 .tmp
 .temp
+*.tmp
+*.temp
+*.test-output
+test-results/
+test-reports/
+coverage-reports/
 
 # External test directory
-#/test_external/
-#/test_external/*
+/test_external/
 
 # Docker related
 .docker-data/

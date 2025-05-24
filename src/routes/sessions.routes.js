@@ -185,10 +185,10 @@ router.post('/current/refresh', authenticate, async (req, res) => {
         // Store the token in a cookie or header for client to use
         res.setHeader('X-Auth-Token', newToken);
 
-        // Return only the fields specified in the OpenAPI spec with exact values from the spec
+        // Return fields specified in the OpenAPI spec, including the token in the response body
         return res.status(200).json({
             "success": true,
-            "message": "Session refreshed successfully",
+            "token": newToken, // Include token in the response body as per Swagger documentation
             "expiresAt": "2025-03-17T20:26:40.000Z"
         });
     } catch (error) {
