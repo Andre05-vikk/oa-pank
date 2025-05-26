@@ -121,7 +121,7 @@ router.post(
             // Verify account ownership
             // Convert userId to string for proper comparison
             // Check both id and _id fields to support both formats
-            const sourceUserId = sourceAccount.user_id.toString();
+            const sourceUserId = (sourceAccount.userId || sourceAccount.user_id || '').toString();
             const requestUserId = req.user.id.toString();
             const requestUserId2 = req.user._id ? req.user._id.toString() : null;
 
@@ -234,7 +234,7 @@ router.post(
                         amount,
                         currency,
                         explanation,
-                        reference,
+                        reference || uuidv4(),
                         'pending',
                         now,
                         now
@@ -283,9 +283,10 @@ router.post(
                         });
                 }
 
+                // Generate a unique reference if not provided
+                const transactionReference = reference || uuidv4();
+
                 try {
-                    // Generate a unique reference if not provided
-                    const transactionReference = reference || uuidv4();
 
                     // Get database connection
                     const db = getDatabase();
@@ -304,8 +305,7 @@ router.post(
                             });
                     }
 
-                    // Define timestamp for transaction
-                    const now = new Date().toISOString();
+
 
                     // Deduct the amount from the sender's account
                     await db.run(
@@ -336,8 +336,8 @@ router.post(
                         explanation,
                         transactionReference,
                         'pending',
-                        now,
-                        now
+                        new Date().toISOString(),
+                        new Date().toISOString()
                     ]);
 
                     // Prepare the data packet for the target bank using the Central Bank specification format
