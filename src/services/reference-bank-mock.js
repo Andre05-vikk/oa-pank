@@ -105,28 +105,34 @@ router.get('/transactions', (req, res) => {
 
 // Create transaction
 router.post('/transactions', (req, res) => {
-  // Check authorization
-  const token = req.headers.authorization?.split(' ')[1];
+  console.log('Reference bank received transaction request:', JSON.stringify(req.body, null, 2));
+  console.log('Reference bank received headers:', JSON.stringify(req.headers, null, 2));
 
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      message: 'No token provided'
-    });
+  // Handle JWT format from other banks
+  let transactionData;
+  if (req.body.jwt) {
+    // Decode JWT (for mock purposes, we'll just decode without verification)
+    try {
+      const jwt = require('jsonwebtoken');
+      transactionData = jwt.decode(req.body.jwt);
+      console.log('Decoded JWT transaction data:', JSON.stringify(transactionData, null, 2));
+    } catch (error) {
+      console.error('Failed to decode JWT:', error);
+      return res.status(400).json({
+        error: "Invalid JWT format"
+      });
+    }
+  } else {
+    // Handle direct transaction data
+    transactionData = req.body;
   }
 
-  // Find user by token
-  const user = mockUsers.find(u => u.token === token);
-
-  if (!user) {
-    return res.status(401).json({
-      success: false,
-      message: 'Invalid token'
-    });
-  }
+  // For mock purposes, we'll accept any transaction to our account
+  // In a real bank, this would require proper authentication
+  const user = mockUsers[0]; // Use the first (and only) mock user
 
   // Validate accountTo - reference bank only accepts existing account numbers
-  const { accountTo } = req.body;
+  const { accountTo } = transactionData;
 
   if (!accountTo) {
     return res.status(400).json({
@@ -145,7 +151,68 @@ router.post('/transactions', (req, res) => {
 
   // Create transaction
   const transaction = {
-    ...req.body,
+    ...transactionData,
+    id: Date.now().toString(),
+    status: 'completed',
+    createdAt: new Date().toISOString()
+  };
+
+  // Add to mock transactions
+  mockTransactions.push(transaction);
+
+  // Return transaction
+  return res.status(200).json(transaction);
+});
+
+// B2B transactions endpoint (used by other banks)
+router.post('/transactions/b2b', (req, res) => {
+  console.log('Reference bank received B2B transaction request:', JSON.stringify(req.body, null, 2));
+  console.log('Reference bank received B2B headers:', JSON.stringify(req.headers, null, 2));
+
+  // Handle JWT format from other banks
+  let transactionData;
+  if (req.body.jwt) {
+    // Decode JWT (for mock purposes, we'll just decode without verification)
+    try {
+      const jwt = require('jsonwebtoken');
+      transactionData = jwt.decode(req.body.jwt);
+      console.log('Decoded B2B JWT transaction data:', JSON.stringify(transactionData, null, 2));
+    } catch (error) {
+      console.error('Failed to decode B2B JWT:', error);
+      return res.status(400).json({
+        error: "Invalid JWT format"
+      });
+    }
+  } else {
+    // Handle direct transaction data
+    transactionData = req.body;
+  }
+
+  // For mock purposes, we'll accept any transaction to our account
+  // In a real bank, this would require proper authentication
+  const user = mockUsers[0]; // Use the first (and only) mock user
+
+  // Validate accountTo - reference bank only accepts existing account numbers
+  const { accountTo } = transactionData;
+
+  if (!accountTo) {
+    return res.status(400).json({
+      error: "Missing accountTo"
+    });
+  }
+
+  // Reference bank only accepts account numbers that exist in their system
+  const validAccount = user.accounts.find(acc => acc.number === accountTo);
+
+  if (!validAccount) {
+    return res.status(400).json({
+      error: "Invalid accountTo"
+    });
+  }
+
+  // Create transaction
+  const transaction = {
+    ...transactionData,
     id: Date.now().toString(),
     status: 'completed',
     createdAt: new Date().toISOString()
