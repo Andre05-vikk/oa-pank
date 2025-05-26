@@ -177,8 +177,8 @@ router.post(
 
                 // Convert amount from source account currency to target account currency
                 let transactionAmount = amount;
-                let fromCurrency = currency;
-                let toCurrency = targetAccount.currency;
+                let fromCurrency = currency || 'EUR';
+                let toCurrency = targetAccount.currency || 'EUR';
 
                 // Internal transaction - process directly
                 const transaction = await createTransaction(
