@@ -121,7 +121,7 @@ router.post(
             // Verify account ownership
             // Convert userId to string for proper comparison
             // Check both id and _id fields to support both formats
-            const sourceUserId = sourceAccount.userId.toString();
+            const sourceUserId = sourceAccount.user_id.toString();
             const requestUserId = req.user.id.toString();
             const requestUserId2 = req.user._id ? req.user._id.toString() : null;
 
@@ -234,7 +234,7 @@ router.post(
                         amount,
                         currency,
                         explanation,
-                        transactionReference,
+                        reference,
                         'pending',
                         now,
                         now
@@ -366,20 +366,20 @@ router.post(
 
                         // Return immediate response with pending status
                         return res.status(201).json({
-                        success: true,
-                        transaction: formatTransactionForResponse({
-                            id: result.lastID || Date.now(),
-                            from_account: accountFrom,
-                            to_account: accountTo,
-                            amount,
-                            currency,
-                            description: explanation,
-                            reference: transactionReference,
-                            status: 'pending',
-                            created_at: new Date().toISOString(),
-                            updated_at: new Date().toISOString()
-                        })
-                    });
+                            success: true,
+                            transaction: formatTransactionForResponse({
+                                id: result.lastID || Date.now(),
+                                from_account: accountFrom,
+                                to_account: accountTo,
+                                amount,
+                                currency,
+                                description: explanation,
+                                reference: transactionReference,
+                                status: 'pending',
+                                created_at: new Date().toISOString(),
+                                updated_at: new Date().toISOString()
+                            })
+                        });
                     } catch (externalError) {
                         // Get database connection for error handling
                         const db = getDatabase();
