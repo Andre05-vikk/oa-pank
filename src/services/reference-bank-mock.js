@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 
-// Mock data
+// Mock data with account number matching the bank prefix from central bank
 const mockUsers = [
   {
     username: 'miki',
@@ -14,7 +14,7 @@ const mockUsers = [
     token: 'mock-token-123',
     accounts: [
       {
-        number: '123456789',
+        number: '61c123456789',
         balance: 1000,
         currency: 'EUR'
       }
@@ -28,17 +28,17 @@ const mockTransactions = [];
 // Login endpoint
 router.post('/sessions', (req, res) => {
   const { username, password } = req.body;
-  
+
   // Find user
   const user = mockUsers.find(u => u.username === username && u.password === password);
-  
+
   if (!user) {
     return res.status(401).json({
       success: false,
       message: 'Invalid credentials'
     });
   }
-  
+
   // Return 201 for test compatibility
   return res.status(201).json({
     token: user.token,
@@ -52,24 +52,24 @@ router.post('/sessions', (req, res) => {
 router.get('/users/current', (req, res) => {
   // Check authorization
   const token = req.headers.authorization?.split(' ')[1];
-  
+
   if (!token) {
     return res.status(401).json({
       success: false,
       message: 'No token provided'
     });
   }
-  
+
   // Find user by token
   const user = mockUsers.find(u => u.token === token);
-  
+
   if (!user) {
     return res.status(401).json({
       success: false,
       message: 'Invalid token'
     });
   }
-  
+
   // Return user info
   return res.status(200).json({
     username: user.username,
@@ -81,24 +81,24 @@ router.get('/users/current', (req, res) => {
 router.get('/transactions', (req, res) => {
   // Check authorization
   const token = req.headers.authorization?.split(' ')[1];
-  
+
   if (!token) {
     return res.status(401).json({
       success: false,
       message: 'No token provided'
     });
   }
-  
+
   // Find user by token
   const user = mockUsers.find(u => u.token === token);
-  
+
   if (!user) {
     return res.status(401).json({
       success: false,
       message: 'Invalid token'
     });
   }
-  
+
   // Return transactions
   return res.status(200).json(mockTransactions);
 });
@@ -107,24 +107,42 @@ router.get('/transactions', (req, res) => {
 router.post('/transactions', (req, res) => {
   // Check authorization
   const token = req.headers.authorization?.split(' ')[1];
-  
+
   if (!token) {
     return res.status(401).json({
       success: false,
       message: 'No token provided'
     });
   }
-  
+
   // Find user by token
   const user = mockUsers.find(u => u.token === token);
-  
+
   if (!user) {
     return res.status(401).json({
       success: false,
       message: 'Invalid token'
     });
   }
-  
+
+  // Validate accountTo - reference bank only accepts existing account numbers
+  const { accountTo } = req.body;
+
+  if (!accountTo) {
+    return res.status(400).json({
+      error: "Missing accountTo"
+    });
+  }
+
+  // Reference bank only accepts account numbers that exist in their system
+  const validAccount = user.accounts.find(acc => acc.number === accountTo);
+
+  if (!validAccount) {
+    return res.status(400).json({
+      error: "Invalid accountTo"
+    });
+  }
+
   // Create transaction
   const transaction = {
     ...req.body,
@@ -132,10 +150,10 @@ router.post('/transactions', (req, res) => {
     status: 'completed',
     createdAt: new Date().toISOString()
   };
-  
+
   // Add to mock transactions
   mockTransactions.push(transaction);
-  
+
   // Return transaction
   return res.status(200).json(transaction);
 });
