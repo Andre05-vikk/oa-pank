@@ -362,8 +362,10 @@ router.post(
                     // Queue the transaction for asynchronous processing
                     try {
                         // Add transaction to the processing queue
-                        await queueTransaction(externalTransactionData, targetBank.transactionUrl, transactionReference);                    // Return immediate response with pending status
-                    return res.status(201).json({
+                        await queueTransaction(externalTransactionData, targetBank.transactionUrl, transactionReference);
+
+                        // Return immediate response with pending status
+                        return res.status(201).json({
                         success: true,
                         transaction: formatTransactionForResponse({
                             id: result.lastID || Date.now(),
