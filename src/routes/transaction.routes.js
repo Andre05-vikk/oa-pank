@@ -325,7 +325,7 @@ router.post(
                     };
 
                     // Insert the transaction into our database
-                    await db.run(`
+                    const result = await db.run(`
                         INSERT INTO transactions (from_account, to_account, amount, currency, description, reference, status, created_at, updated_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     `, [
@@ -366,7 +366,7 @@ router.post(
                     return res.status(201).json({
                         success: true,
                         transaction: formatTransactionForResponse({
-                            id: transaction.lastID || Date.now(),
+                            id: result.lastID || Date.now(),
                             from_account: accountFrom,
                             to_account: accountTo,
                             amount,
