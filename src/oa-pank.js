@@ -212,7 +212,7 @@ const initializeApp = async () => {
 
     // Start server
     const startServer = () => {
-      const PORT = 3001; // Fixed port for tests
+      const PORT = process.env.PORT || 3001;
       const HOST = '0.0.0.0';
 
       app.listen(PORT, HOST, () => {
