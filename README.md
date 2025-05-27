@@ -49,6 +49,8 @@ Swagger UI (API documentation) will be available at:
 http://localhost:3001/docs
 ```
 
+> **Note:** The default port is 3001, but you can configure it using the `PORT` environment variable in your `.env` file.
+
 ---
 
 ### Production Deployment (PM2 + Alpine Linux)
@@ -86,6 +88,8 @@ location /oa-pank/ {
     include proxy.conf;
 }
 ```
+
+> **Note:** Make sure the port in your Nginx config matches the `PORT` value in your server's `.env` file.
 
 ---
 

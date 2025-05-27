@@ -213,7 +213,7 @@ const initializeApp = async () => {
     // Start server
     const startServer = () => {
       const PORT = process.env.PORT || 3001;
-      const HOST = '0.0.0.0';
+      const HOST = process.env.HOST || '0.0.0.0';
 
       app.listen(PORT, HOST, () => {
         console.log(`${process.env.BANK_NAME || 'OA-Pank'} server running on ${HOST}:${PORT}`);
