@@ -76,6 +76,23 @@ router.post(
                     });
             }
 
+            // Check if email already exists
+            const existingEmail = await getBy('users', 'email', req.body.email);
+            if (existingEmail) {
+                return res.status(409)
+                    .contentType('application/problem+json')
+                    .json({
+                        type: 'https://example.com/conflict',
+                        title: 'Resource Conflict',
+                        status: 409,
+                        detail: 'A user with this email already exists in the system',
+                        instance: req.originalUrl,
+                        email: req.body.email,
+                        success: false,
+                        message: 'Email already exists'
+                    });
+            }
+
             // Hash password
             const salt = await bcrypt.genSalt(10);
             const hashedPassword = await bcrypt.hash(req.body.password, salt);

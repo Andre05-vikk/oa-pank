@@ -8,75 +8,11 @@
     "lastUpdated": "2025-04-08T20:23:39.095Z"
   },
   {
-    "name": "DigiPank",
-    "transactionUrl": "https://pank.digikaup.online/transactions/b2b",
-    "bankPrefix": "d38",
-    "owners": "Ove",
-    "jwksUrl": "https://pank.digikaup.online/transactions/jwks",
-    "lastUpdated": "2025-05-15T20:54:56.460Z"
-  },
-  {
-    "name": "DIPANK",
-    "transactionUrl": "https://pank.digikaup.online/transactions/b2b",
-    "bankPrefix": "c44",
-    "owners": "OVE",
-    "jwksUrl": "https://pank.digikaup.online/jwks.json",
-    "lastUpdated": "2025-05-18T06:56:54.354Z"
-  },
-  {
-    "name": "Eero Bank",
-    "transactionUrl": "https://bank.eerovallistu.site/transactions/b2b",
-    "bankPrefix": "be5",
-    "owners": "Eero Vallistu",
-    "jwksUrl": "https://bank.eerovallistu.site/jwks.json",
-    "lastUpdated": "2025-04-19T08:19:49.052Z"
-  },
-  {
-    "name": "EfeBank",
-    "transactionUrl": "https://bank.bee-srv.me/transactions/b2b",
-    "bankPrefix": "84f",
-    "owners": "Efe",
-    "jwksUrl": "https://bank.bee-srv.me/jwks.json",
-    "lastUpdated": "2025-04-23T08:45:07.275Z"
-  },
-  {
     "name": "FlowBank",
     "transactionUrl": "https://bank.brigitakasemets.me/transactions/b2b",
     "bankPrefix": "435",
     "owners": "Brigita",
     "jwksUrl": "https://bank.brigitakasemets.me/jwks",
     "lastUpdated": "2025-05-22T06:30:26.353Z"
-  },
-  {
-    "name": "Nele Bank",
-    "transactionUrl": "https://nele.my/nele-bank/api/v1/transactions/b2b",
-    "bankPrefix": "300",
-    "owners": "Nele",
-    "jwksUrl": "https://nele.my/nele-bank/.well-known/jwks.json",
-    "lastUpdated": "2025-04-08T20:23:39.096Z"
-  },
-  {
-    "name": "NLine Pank",
-    "transactionUrl": "https://pank.digikaup.online/api/transactions/b2b",
-    "bankPrefix": "30b",
-    "owners": "NLine Group",
-    "jwksUrl": "https://pank.digikaup.online/.well-known/jwks.json",
-    "lastUpdated": "2025-04-23T08:45:07.275Z"
-  },
-  {
-    "name": "NLine Pank V2",
-    "transactionUrl": "https://pank.digikaup.online/api/transactions/b2b",
-    "bankPrefix": "c9b",
-    "owners": "NLine Group",
-    "jwksUrl": "https://pank.digikaup.online/api/jwks/v2",
-    "lastUpdated": "2025-05-01T06:20:22.363Z"
-  },
-  {
-    "name": "Ove Bank API",
-    "transactionUrl": "https://henno.cfd/ove-bank/api/transactions/external",
-    "bankPrefix": "fb4",
-    "owners": "Ove",
-    "jwksUrl": "https://henno.cfd/ove-bank/jwks.json",
-    "lastUpdated": "2025-04-08T20:23:39.096Z"
   }
 ]
