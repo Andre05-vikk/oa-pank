@@ -185,10 +185,93 @@ const getAllBanks = async (retryCount = 3, retryDelay = 1000) => {
   }
 };
 
+/**
+ * Validate bank registration status with the central bank
+ * This function checks if the bank is still registered and active with the central bank
+ * @param {number} retryCount - Number of retry attempts
+ * @param {number} retryDelay - Delay between retries in milliseconds
+ * @returns {Promise<Object>} - Bank registration data from central bank
+ */
+const validateBankRegistration = async (retryCount = 3, retryDelay = 1000) => {
+  // First, try to get our bank data from the local file
+  const centralBankDataPath = path.join(__dirname, '../../data/central_bank_data.json');
+  let localBankData = null;
+
+  if (fs.existsSync(centralBankDataPath)) {
+    try {
+      localBankData = JSON.parse(fs.readFileSync(centralBankDataPath, 'utf8'));
+    } catch (error) {
+      console.warn('Failed to read local central bank data:', error.message);
+    }
+  }
+
+  // If we don't have local data, we can't validate
+  if (!localBankData || !localBankData.bankPrefix) {
+    throw new Error('No local bank registration data found. Bank must register first.');
+  }
+
+  const bankPrefix = localBankData.bankPrefix;
+  const bankName = localBankData.name;
+
+  for (let attempt = 1; attempt <= retryCount; attempt++) {
+    try {
+      console.log(`Attempt ${attempt} to validate bank registration with central bank`);
+      
+      // Get all banks from the central bank and find ours
+      const allBanks = await getAllBanks();
+      
+      // Find our bank by prefix and name
+      const ourBank = allBanks.find(bank => 
+        bank.bankPrefix === bankPrefix || 
+        (bank.name && bankName && bank.name.toLowerCase() === bankName.toLowerCase())
+      );
+
+      if (ourBank && ourBank.bankPrefix === bankPrefix) {
+        console.log('Bank registration validated successfully with central bank');
+        
+        // Update local file with latest data from central bank if different
+        try {
+          const currentData = JSON.stringify(ourBank, null, 2);
+          const localData = JSON.stringify(localBankData, null, 2);
+          
+          if (currentData !== localData) {
+            fs.writeFileSync(centralBankDataPath, currentData);
+            console.log('Updated local central bank data with latest from central bank');
+          }
+        } catch (saveError) {
+          console.warn('Failed to update local central bank data:', saveError.message);
+        }
+        
+        return ourBank;
+      } else {
+        throw new Error('Bank registration validation failed: bank not found or data mismatch');
+      }
+    } catch (error) {
+      console.error(`Attempt ${attempt} to validate bank registration failed:`, error.message);
+      
+      if (error.message.includes('bank not found')) {
+        throw new Error('Bank registration not found in central bank. Bank may have been deregistered.');
+      }
+
+      // If we've tried the maximum number of times, throw the error
+      if (attempt === retryCount) {
+        console.error(`All ${retryCount} attempts to validate bank registration failed.`);
+        throw error;
+      }
+
+      // Wait before the next retry
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      // Increase delay for next attempt (exponential backoff)
+      retryDelay *= 2;
+    }
+  }
+};
+
 module.exports = {
   registerWithCentralBank,
   verifyTransaction,
   getBankPublicKey,
   getAllBanks,
+  validateBankRegistration,
   CENTRAL_BANK_URL
 };

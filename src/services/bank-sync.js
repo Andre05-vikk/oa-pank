@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { getDatabase } = require('../config/database');
-const { getAllBanks } = require('../config/central-banks.config');
+const { getAllBanks, validateBankRegistration } = require('../config/central-banks.config');
 
 // Paths to data files
 const otherBanksDataPath = path.join(__dirname, '../../data/other_banks_data.json');
@@ -263,6 +263,30 @@ const updateDatabaseWithBanksData = async (banksData) => {
 };
 
 /**
+ * Validate this bank's registration with the central bank
+ * @returns {Promise<Object>} - Validation result
+ */
+const validateOwnBankRegistration = async () => {
+  try {
+    console.log('Validating bank registration with Central Bank...');
+    const validationResult = await validateBankRegistration();
+    console.log('Bank registration validation successful');
+    return {
+      success: true,
+      data: validationResult,
+      timestamp: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Bank registration validation failed:', error.message);
+    return {
+      success: false,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+};
+
+/**
  * Main function to update banks from Central Bank
  * @returns {Promise<Object>} - Update results
  */
@@ -405,8 +429,8 @@ const cleanExistingBankData = async () => {
 };
 
 /**
- * Initialize bank synchronization
- * Sets up periodic updates every 24 hours
+ * Initialize bank synchronization with registration validation
+ * Sets up periodic updates every 5 minutes
  */
 const initializeBankSync = () => {
   // First clean existing data to remove duplicates
@@ -416,6 +440,16 @@ const initializeBankSync = () => {
         console.log('Successfully cleaned existing bank data');
       } else {
         console.warn('Failed to clean existing bank data, continuing anyway');
+      }
+
+      // Validate our own registration
+      return validateOwnBankRegistration();
+    })
+    .then(validationResult => {
+      if (validationResult.success) {
+        console.log('Bank registration validation passed during initialization');
+      } else {
+        console.warn('Bank registration validation failed during initialization:', validationResult.error);
       }
 
       // Run initial update
@@ -428,11 +462,22 @@ const initializeBankSync = () => {
       console.error('Error during initial bank sync:', error);
     });
 
-  // Set up periodic updates every 24 hours (in milliseconds)
-  const updateInterval = 24 * 60 * 60 * 1000; // 24 hours
+  // Set up periodic updates every 5 minutes (in milliseconds)
+  const updateInterval = 5 * 60 * 1000; // 5 minutes
 
   setInterval(() => {
-    updateBanksFromCentralBank()
+    // First validate our own registration, then update banks data
+    validateOwnBankRegistration()
+      .then(validationResult => {
+        if (validationResult.success) {
+          console.log('Periodic bank registration validation passed');
+        } else {
+          console.warn('Periodic bank registration validation failed:', validationResult.error);
+          // Consider this a warning, not a critical error for the sync process
+        }
+
+        return updateBanksFromCentralBank();
+      })
       .then(result => {
         console.log('Periodic bank sync result:', result);
       })
@@ -441,11 +486,12 @@ const initializeBankSync = () => {
       });
   }, updateInterval);
 
-  console.log(`Bank synchronization initialized, will update every ${updateInterval / (60 * 60 * 1000)} hours`);
+  console.log(`Bank synchronization initialized, will update every ${updateInterval / (60 * 1000)} minutes`);
 };
 
 module.exports = {
   updateBanksFromCentralBank,
   initializeBankSync,
-  cleanExistingBankData
+  cleanExistingBankData,
+  validateOwnBankRegistration
 };

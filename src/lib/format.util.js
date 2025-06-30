@@ -62,6 +62,7 @@ const formatAccountForResponse = (account) => {
     return {
         _id: accountId, // Return as string, not number
         accountNumber: accountNumber,
+        name: camelCaseAccount.name || account.name || '',
         user: camelCaseAccount.userId ? camelCaseAccount.userId.toString() :
               camelCaseAccount.user_id ? camelCaseAccount.user_id.toString() : '',
         balance: parseFloat(camelCaseAccount.balance || account.balance || 0),

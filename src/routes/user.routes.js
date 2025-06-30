@@ -27,9 +27,9 @@ const formatUserForResponse = (user) => {
     return {
         _id: camelCaseUser.id ? camelCaseUser.id.toString() : (camelCaseUser._id || '').toString(),
         username: camelCaseUser.username || '',
-        firstName: camelCaseUser.firstName || camelCaseUser.first_name || 'John', // Default value for test compatibility
-        lastName: camelCaseUser.lastName || camelCaseUser.last_name || 'Doe', // Default value for test compatibility
-        email: camelCaseUser.email || 'john.doe@example.com', // Default value for test compatibility
+        firstName: camelCaseUser.firstName || camelCaseUser.first_name || '',
+        lastName: camelCaseUser.lastName || camelCaseUser.last_name || '',
+        email: camelCaseUser.email || '',
         role: camelCaseUser.role || 'user',
         isActive: camelCaseUser.isActive !== undefined ? camelCaseUser.isActive : true,
         lastLogin: camelCaseUser.lastLogin || null,

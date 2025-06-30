@@ -14,5 +14,21 @@
     "owners": "Brigita",
     "jwksUrl": "https://bank.brigitakasemets.me/jwks",
     "lastUpdated": "2025-05-22T06:30:26.353Z"
+  },
+  {
+    "name": "Nele Bank",
+    "transactionUrl": "https://nele.my/nele-bank/api/v1/transactions/b2b",
+    "bankPrefix": "060",
+    "owners": "Nele",
+    "jwksUrl": "https://nele.my/nele-bank/.well-known/jwks.json",
+    "lastUpdated": "2025-06-30T06:59:31.306Z"
+  },
+  {
+    "name": "OA-Pank",
+    "transactionUrl": "https://hack2you.eu/oa-pank/docs/transactions/b2b",
+    "bankPrefix": "8a0",
+    "owners": "Andre Park",
+    "jwksUrl": "https://hack2you.eu/oa-pank/docs/.well-known/jwks.json",
+    "lastUpdated": "2025-06-30T07:16:32.693Z"
   }
 ]

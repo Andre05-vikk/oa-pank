@@ -96,7 +96,8 @@ router.post(
             const accountData = {
                 user_id: userId, // Always store as string
                 account_number: accountNumber,
-                balance: req.body.balance !== undefined ? req.body.balance : 1000,
+                name: req.body.name || `${req.body.type || 'checking'} account`,
+                balance: req.body.balance !== undefined ? req.body.balance : (req.body.initialBalance !== undefined ? req.body.initialBalance : 1000),
                 currency: req.body.currency || 'EUR',
                 is_active: true,
                 type: req.body.type || 'checking',

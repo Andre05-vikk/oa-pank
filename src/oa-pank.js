@@ -6,7 +6,7 @@ const YAML = require('js-yaml');
 const fs = require('fs');
 const path = require('path');
 
-const { registerWithCentralBank } = require('./config/central-banks.config');
+const { registerWithCentralBank, validateBankRegistration } = require('./config/central-banks.config');
 const { initializeDatabase } = require('./config/database');
 
 const { processTransactionQueue } = require('./services/transaction-processor');
@@ -21,6 +21,7 @@ const accountRoutes = require('./routes/account.routes');
 const transactionRoutes = require('./routes/transaction.routes');
 const incomingTransactionRoutes = require('./routes/incoming-transaction.routes');
 const jwksRoutes = require('./routes/jwks.routes');
+const statusRoutes = require('./routes/status.routes');
 const referenceBankMock = require('./services/reference-bank-mock');
 
 // Create Express app
@@ -133,6 +134,7 @@ app.use(`${routePrefix}/users`, userRoutes);
 app.use(`${routePrefix}/accounts`, accountRoutes);
 app.use(`${routePrefix}/transactions`, transactionRoutes);
 app.use(`${routePrefix}/incoming-transactions`, incomingTransactionRoutes);
+app.use(`${routePrefix}/status`, statusRoutes);
 
 // Add routes for b2b transactions that redirect to the incoming-transactions endpoint
 // These are needed for central bank registration
@@ -170,33 +172,72 @@ const initializeApp = async () => {
       const centralBankData = await registerWithCentralBank();
       console.log('Successfully registered with Central Bank');
 
-      // Update global bank prefix if available from central bank
-      if (centralBankData && centralBankData.bankPrefix) {
-        global.BANK_PREFIX = centralBankData.bankPrefix;
-        console.log(`Using bank prefix from central bank: ${global.BANK_PREFIX}`);
-
-        // Store the bank prefix in a persistent location for future use
-        process.env.LAST_CENTRAL_BANK_PREFIX = global.BANK_PREFIX;
-      } else {
-        console.log(`Central bank did not provide a prefix. Using last known prefix if available.`);
+      // Validate registration status with central bank
+      try {
+        const validatedData = await validateBankRegistration();
+        console.log('Bank registration validated with Central Bank');
+        
+        // Update global bank prefix if available from central bank
+        if (validatedData && validatedData.bankPrefix) {
+          global.BANK_PREFIX = validatedData.bankPrefix;
+          console.log(`Using validated bank prefix from central bank: ${global.BANK_PREFIX}`);
+          
+          // Store the bank prefix in a persistent location for future use
+          process.env.LAST_CENTRAL_BANK_PREFIX = global.BANK_PREFIX;
+        }
+      } catch (validationError) {
+        console.warn('Bank registration validation failed:', validationError.message);
+        
+        // Still use the data from registration if validation fails
+        if (centralBankData && centralBankData.bankPrefix) {
+          global.BANK_PREFIX = centralBankData.bankPrefix;
+          console.log(`Using bank prefix from registration (validation failed): ${global.BANK_PREFIX}`);
+          
+          // Store the bank prefix in a persistent location for future use
+          process.env.LAST_CENTRAL_BANK_PREFIX = global.BANK_PREFIX;
+        }
+        
+        // In production, consider this a critical error if we can't validate
+        if (process.env.NODE_ENV === 'production' && process.env.REQUIRE_BANK_VALIDATION === 'true') {
+          console.error('Exiting application due to failure to validate bank registration with Central Bank');
+          process.exit(1);
+        }
       }
     } catch (error) {
       console.error('Failed to register with Central Bank:', error.message);
-      // Use the last known prefix from central bank if available
-      if (process.env.LAST_CENTRAL_BANK_PREFIX) {
-        global.BANK_PREFIX = process.env.LAST_CENTRAL_BANK_PREFIX;
-        console.log(`Using last known central bank prefix: ${global.BANK_PREFIX}`);
-      } else {
-        // Only as a last resort, use environment variable or default
-        global.BANK_PREFIX = process.env.BANK_PREFIX || '313'; // Default to our known bank prefix from central bank
-        console.log(`No previous central bank prefix available. Using fallback: ${global.BANK_PREFIX}`);
-      }
-      // In production, we might want to exit if we can't register
-      if (process.env.NODE_ENV === 'production' && process.env.REQUIRE_CENTRAL_BANK === 'true') {
-        console.error('Exiting application due to failure to register with Central Bank');
-        process.exit(1);
-      } else {
-        console.warn('Continuing without Central Bank registration. This is not recommended for production.');
+      
+      // Try to validate existing registration if registration fails
+      try {
+        const validatedData = await validateBankRegistration();
+        console.log('Bank registration validated with Central Bank (registration failed but validation succeeded)');
+        
+        if (validatedData && validatedData.bankPrefix) {
+          global.BANK_PREFIX = validatedData.bankPrefix;
+          console.log(`Using validated bank prefix from central bank: ${global.BANK_PREFIX}`);
+          
+          // Store the bank prefix in a persistent location for future use
+          process.env.LAST_CENTRAL_BANK_PREFIX = global.BANK_PREFIX;
+        }
+      } catch (validationError) {
+        console.error('Both registration and validation failed:', validationError.message);
+        
+        // Use the last known prefix from central bank if available
+        if (process.env.LAST_CENTRAL_BANK_PREFIX) {
+          global.BANK_PREFIX = process.env.LAST_CENTRAL_BANK_PREFIX;
+          console.log(`Using last known central bank prefix: ${global.BANK_PREFIX}`);
+        } else {
+          // Only as a last resort, use environment variable or default
+          global.BANK_PREFIX = process.env.BANK_PREFIX || '313'; // Default to our known bank prefix from central bank
+          console.log(`No previous central bank prefix available. Using fallback: ${global.BANK_PREFIX}`);
+        }
+        
+        // In production, we might want to exit if we can't register or validate
+        if (process.env.NODE_ENV === 'production' && process.env.REQUIRE_CENTRAL_BANK === 'true') {
+          console.error('Exiting application due to failure to register with Central Bank');
+          process.exit(1);
+        } else {
+          console.warn('Continuing without Central Bank registration/validation. This is not recommended for production.');
+        }
       }
     }
 
@@ -206,7 +247,7 @@ const initializeApp = async () => {
     console.log('Transaction processor started');
 
     // Initialize bank synchronization
-    // This will update bank data from Central Bank every 24 hours
+    // This will update bank data from Central Bank every 5 minutes
     initializeBankSync();
     console.log('Bank synchronization initialized');
 
